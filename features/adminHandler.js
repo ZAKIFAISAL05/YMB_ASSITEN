@@ -167,26 +167,31 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
 
         case '!hapus':
-            const targetHapus = args[0]?.toLowerCase(); // Ambil hari
-            const targetMapel = args.slice(1).join(' ').toLowerCase(); // Ambil nama mapel
+            // Kita gunakan argumen dari body agar fleksibel dengan huruf kapital
+            const rawHapusArgs = body.split(' ');
+            const targetHapus = rawHapusArgs[1]?.toLowerCase(); // Ambil hari (index 1)
+            const targetMapel = rawHapusArgs.slice(2).join(' ').toLowerCase(); // Ambil mapel (sisanya)
             
-            if (['senin', 'selasa', 'rabu', 'kamis', 'jumat'].includes(targetHapus)) {
+            const daftarHari = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
+
+            if (daftarHari.includes(targetHapus)) {
                 if (targetMapel === 'semua') {
                     db.updateTugas(targetHapus, "");
                     await sock.sendMessage(sender, { text: `✅ Semua data hari *${targetHapus.toUpperCase()}* dihapus!` });
-                } else {
+                } else if (targetMapel) {
                     const findM = STRUKTUR_JADWAL[targetHapus].find(m => new RegExp(`\\b${targetMapel}\\b`, 'i').test(m));
                     if (!findM) return await sock.sendMessage(sender, { text: `❌ *MAPEL TIDAK DITEMUKAN*` });
                     
                     const emojiMapel = MAPEL_CONFIG[findM];
                     let currentData = db.getAll()[targetHapus] || "";
                     
-                    // Logika Hapus per Blok (Menghapus sampai separator & link web)
                     let entries = currentData.split(/\n\n(?=•)/g);
                     let filtered = entries.filter(e => !e.includes(emojiMapel));
                     
                     db.updateTugas(targetHapus, filtered.join('\n\n').trim());
-                    await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}* beserta file terkait!` });
+                    await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}*!` });
+                } else {
+                    await sock.sendMessage(sender, { text: "⚠️ *Mapel belum diisi!*" });
                 }
             } else {
                 await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari] [mapel/semua]*" });
@@ -214,3 +219,4 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
 }
 
 module.exports = { handleAdminCommands };
+        
