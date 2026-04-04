@@ -6,7 +6,7 @@ const { MAPEL_CONFIG, STRUKTUR_JADWAL, LABELS } = require('../pelajaran');
 const { JADWAL_PELAJARAN } = require('../constants');
 
 const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
-const MY_DOMAIN = 'https://assitenymb.zeabur.app';
+const MY_DOMAIN = 'https://ymbassiten-production.up.railway.app';
 const PUBLIC_PATH = '/app/auth_info/public_files';
 const SEP = '━━━━━━━━━━━━━━━━━━━━';
 
