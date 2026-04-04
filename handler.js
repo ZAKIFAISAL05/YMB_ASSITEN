@@ -18,7 +18,7 @@ function getClosestCommand(cmd) {
 
     const validCommands = [
         '!cekbot', '!list_pr', '!tugas_lama', '!bantuan', '!jadwal', '!tambah_pr', '!hapus_pr', 
-        '!update', '!update_jadwal', '!hapus', '!grup', '!polling', '!info', '!reset-bot', '!data', '!cek_db'
+        '!update', '!update_jadwal', '!hapus', '!grup', '!polling', '!info', '!reset-bot', '!data', '!cek_db', '!deadline', '!jadwal_baru'
     ];
 
     if (validCommands.includes(cmd)) return null;
@@ -51,7 +51,7 @@ async function handleMessages(sock, m, botConfig, utils) {
         }
 
         // Check Format Tanpa Tanda Seru
-        const triggers = ['cekbot', 'list_pr', 'tugas_lama', 'bantuan', 'jadwal', 'tambah_pr', 'hapus_pr', 'update', 'update_jadwal', 'hapus', 'grup', 'info', 'data', 'menu', 'pr', 'deadline'];
+        const triggers = ['cekbot', 'list_pr', 'tugas_lama', 'bantuan', 'jadwal', 'tambah_pr', 'hapus_pr', 'update', 'update_jadwal', 'hapus', 'grup', 'info', 'data', 'menu', 'pr', 'deadline', 'jadwal_baru'];
         const firstWord = textLower.split(' ')[0].replace('!', '');
         
         if (!body.startsWith('!') && triggers.includes(firstWord)) {
@@ -94,19 +94,23 @@ async function handleMessages(sock, m, botConfig, utils) {
                     `_Fungsi: Masukin PR ke web/database._\n` +
                     `_Contoh: !update senin mtk hal 10_\n\n` +
                     `📂 *!cek_db*\n` +
-                    `_Fungsi: Intip data mentah database._\n`;
-            } // <--- SEBELUMNYA KURANG PENUTUP INI
+                    `_Fungsi: Intip data mentah database._\n\n` +
+                    `🔄 *!jadwal_baru*\n` +
+                    `_Fungsi: Sinkronisasi ulang jadwal pelajaran._\n\n` +
+                    `⏳ *!deadline [tugas]*\n` +
+                    `_Fungsi: Update daftar tugas lama yang belum dikumpul._\n`;
+            } 
 
             menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Gunakan tanda ! di depan perintah_`;
             
             return await sock.sendMessage(sender, { text: menuTeks });
         }
 
-        // Routing Perintah Use
+        // Routing Perintah User
         const userCmds = ['!cekbot', '!list_pr', '!tugas_lama', '!jadwal', '!tambah_pr', '!hapus_pr'];
         
-        // Routing Perintah Admin
-        const adminCmds = ['!update', '!update_jadwal', '!hapus', '!grup', '!info', '!reset-bot', '!data', '!cek_db'];
+        // Routing Perintah Admin (Termasuk !deadline dan !jadwal_baru)
+        const adminCmds = ['!update', '!update_jadwal', '!hapus', '!grup', '!info', '!reset-bot', '!data', '!cek_db', '!deadline', '!jadwal_baru'];
 
         if (userCmds.includes(cmd)) {
             await handleUserCommands(sock, msg, cmd, args, utils);
