@@ -1,6 +1,6 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.3 (Final Stable - Anti Lag)
+ * Versi: 1.2.4 (Performance Fix - MongoDB)
  * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
  * Status Auto-Cleaning: DISABLED (File Abadi)
  */
@@ -77,7 +77,6 @@ function loadConfig() {
             console.log("✅ Config Berhasil Dimuat dari Volume");
         } else {
             fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
-            console.log("ℹ️ Membuat file konfigurasi baru...");
         }
     } catch (e) { 
         console.error("❌ Gagal memuat config:", e.message); 
@@ -117,13 +116,13 @@ app.get("/tugas/:filenames", (req, res) => {
 });
 
 /**
- * LOGGING SYSTEM (Optimized)
+ * LOGGING SYSTEM
  */
 const addLog = (msg) => {
     const time = new Date().toLocaleTimeString('id-ID');
     logs.unshift(`<span style="color: #00ff73;">[${time}]</span> <span style="color: #ffffff !important;">${msg}</span>`);
     stats.totalLog++;
-    if (logs.length > 25) logs.pop(); // Batasi log di dashboard agar tidak berat
+    if (logs.length > 25) logs.pop();
 };
 
 /**
@@ -163,13 +162,17 @@ async function start() {
             version,
             auth: { 
                 creds: state.creds, 
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })) 
+                // Gunakan pino silent agar tidak membebani pemrosesan kunci auth
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
             },
             printQRInTerminal: false,
-            logger: pino({ level: "fatal" }), // Matikan spam log Baileys
+            logger: pino({ level: "silent" }), 
             browser: ["Syteam-Bot", "Chrome", "1.0.0"],
-            syncFullHistory: false, // ANTI LAG: Jangan ambil chat lama
-            connectTimeoutMs: 60000
+            syncFullHistory: false,
+            // Optimasi durasi timeout agar tidak 'gantung'
+            connectTimeoutMs: 30000, 
+            keepAliveIntervalMs: 15000,
+            generateHighQualityLinkPreview: false
         });
 
         sock.ev.on("creds.update", saveCreds);
@@ -180,10 +183,12 @@ async function start() {
             
             if (connection === "close") {
                 isConnected = false;
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+                
                 if (shouldReconnect) {
-                    addLog("🔴 Putus, menyambung kembali...");
-                    setTimeout(start, 7000); // Beri jeda lebih lama sebelum reconnect
+                    addLog(`🔴 Terputus (Code: ${statusCode}), reconnecting...`);
+                    setTimeout(start, 5000);
                 } else {
                     addLog("⚠️ Logout. Silakan scan ulang.");
                 }
@@ -192,13 +197,17 @@ async function start() {
                 qrCodeData = ""; 
                 addLog("🟢 Bot Berhasil Terhubung!");
                 
-                // JEDA SCHEDULER: Biar tidak crash saat baru nyala
-                setTimeout(() => { if(isConnected) initQuizScheduler(sock, botConfig) }, 3000);
-                setTimeout(() => { if(isConnected) initJadwalBesokScheduler(sock, botConfig) }, 6000);
-                setTimeout(() => { if(isConnected) initSmartFeedbackScheduler(sock, botConfig) }, 9000);
-                setTimeout(() => { if(isConnected) initListPrMingguanScheduler(sock, botConfig) }, 12000);
-                setTimeout(() => { if(isConnected) initSahurScheduler(sock, botConfig) }, 15000);
-                setTimeout(() => { if(isConnected) initTkaScheduler(sock, botConfig) }, 18000);
+                // Menjalankan scheduler secara bertahap agar tidak menghambat penerimaan pesan
+                const schedulers = [
+                    () => initQuizScheduler(sock, botConfig),
+                    () => initJadwalBesokScheduler(sock, botConfig),
+                    () => initSmartFeedbackScheduler(sock, botConfig),
+                    () => initListPrMingguanScheduler(sock, botConfig),
+                    () => initSahurScheduler(sock, botConfig),
+                    () => initTkaScheduler(sock, botConfig)
+                ];
+
+                schedulers.forEach((fn, i) => setTimeout(() => { if(isConnected) fn() }, (i + 1) * 4000));
             }
         });
 
@@ -208,10 +217,16 @@ async function start() {
                 if (!msg.message || msg.key.fromMe) return;
                 
                 stats.pesanMasuk++;
-                if (stats.pesanMasuk % 3 === 0) addLog(`📩 Pesan masuk dari: ${msg.pushName || 'User'}`);
+                addLog(`📩 Pesan dari: ${msg.pushName || 'User'}`);
                 
-                await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual })
-                      .catch(e => console.log("Handler Error: ", e.message));
+                // Jalankan handler secara asynchronous agar tidak membebani socket
+                setImmediate(async () => {
+                    try {
+                        await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual });
+                    } catch (e) {
+                        console.error("Handler Error:", e.message);
+                    }
+                });
             }
         });
 
@@ -225,5 +240,6 @@ start();
 
 /**
  * Akhir dari file index.js.
- * Tetap rapi dan stabil.
+ * Perbaikan fokus pada responsivitas pesan.
  */
+                 
