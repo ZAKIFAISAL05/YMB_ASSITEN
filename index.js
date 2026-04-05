@@ -1,7 +1,7 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.0 (Original Logic - Restored)
- * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
+ * Versi: 1.2.9 (Stable Legacy Edition)
+ * Driver: MongoDB 4.1 Optimized
  */
 
 const { 
@@ -20,7 +20,7 @@ const QRCode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
 
-// --- IMPORT HANDLER & SCHEDULER ---
+// --- IMPORT ASLI ---
 const { handleMessages } = require('./handler'); 
 const { 
     initQuizScheduler, 
@@ -36,40 +36,25 @@ const { initTkaScheduler } = require('./tkaReminder');
 const { renderDashboard } = require('./views/dashboard'); 
 const { renderMediaView } = require('./views/mediaView'); 
 
-// --- KONFIGURASI PATH ---
+// --- PATHS ---
 const VOLUME_PATH = '/app/auth_info';
-const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
 if (!fs.existsSync(VOLUME_PATH)) fs.mkdirSync(VOLUME_PATH, { recursive: true });
 if (!fs.existsSync(PUBLIC_FILES_PATH)) fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
 
-// --- CONFIG DEFAULT ---
-let botConfig = { 
-    quiz: true, 
-    jadwalBesok: true, 
-    smartFeedback: true, 
-    prMingguan: true, 
-    sahur: true,
-    tkaReminder: true 
-};
+let botConfig = { quiz: true, jadwalBesok: true, smartFeedback: true, prMingguan: true, sahur: true, tkaReminder: true };
 
-// --- SERVER SETUP ---
+// --- SERVER ---
 const app = express();
 const port = process.env.PORT || 8080;
-let qrCodeData = "";
-let isConnected = false;
-let sock;
-let logs = [];
-let stats = { pesanMasuk: 0, totalLog: 0 };
+let qrCodeData = "", isConnected = false, sock, logs = [], stats = { pesanMasuk: 0, totalLog: 0 };
 
 app.use('/files', express.static(PUBLIC_FILES_PATH));
 
 app.get("/tugas/:filenames", (req, res) => {
     const filenames = req.params.filenames.split(','); 
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const fileUrls = filenames.map(name => `${protocol}://${host}/files/${name}`); 
+    const fileUrls = filenames.map(name => `${req.protocol}://${req.get('host')}/files/${name}`); 
     res.setHeader('Content-Type', 'text/html');
     res.send(renderMediaView(fileUrls));
 });
@@ -85,15 +70,14 @@ app.get("/", (req, res) => {
     res.send(renderDashboard(isConnected, qrCodeData, botConfig, stats, logs, port));
 });
 
-app.listen(port, "0.0.0.0", () => {
-    console.log(`✅ Server nyala di port ${port}`);
-});
+app.listen(port, "0.0.0.0", () => console.log(`✅ Dashboard Online`));
 
 /**
- * FUNGSI START UTAMA (LOGIKA LAMA)
+ * START FUNCTION (Logika Index Lama)
  */
 async function start() {
-    const MONGODB_URI = "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority";
+    // Tambahkan opsi keepAlive untuk MongoDB 4.1
+    const MONGODB_URI = "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority&connectTimeoutMS=60000&socketTimeoutMS=60000";
 
     try {
         const { state, saveCreds } = await useMongoDBAuthState(MONGODB_URI);
@@ -108,7 +92,8 @@ async function start() {
             printQRInTerminal: false,
             logger: pino({ level: "silent" }), 
             browser: ["Syteam-Bot", "Chrome", "1.0.0"],
-            syncFullHistory: false
+            syncFullHistory: false,
+            connectTimeoutMs: 60000
         });
 
         sock.ev.on("creds.update", saveCreds);
@@ -119,9 +104,9 @@ async function start() {
             
             if (connection === "close") {
                 isConnected = false;
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                if (shouldReconnect) {
-                    addLog("🔴 Putus, mencoba nyambung lagi...");
+                const code = lastDisconnect?.error?.output?.statusCode;
+                if (code !== DisconnectReason.loggedOut) {
+                    addLog("🔴 Putus, nyambung lagi dalam 5 detik...");
                     setTimeout(start, 5000);
                 }
             } else if (connection === "open") {
@@ -129,7 +114,7 @@ async function start() {
                 qrCodeData = ""; 
                 addLog("🟢 Bot Berhasil Terhubung!");
                 
-                // Jalankan scheduler (Logika Lama)
+                // Eksekusi Scheduler Original
                 initQuizScheduler(sock, botConfig);
                 initJadwalBesokScheduler(sock, botConfig);
                 initSmartFeedbackScheduler(sock, botConfig);
@@ -143,18 +128,16 @@ async function start() {
             if (m.type === 'notify') {
                 const msg = m.messages[0];
                 if (!msg.message || msg.key.fromMe) return;
-                
                 stats.pesanMasuk++;
-                await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual })
-                      .catch(e => console.log(e));
+                await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual }).catch(() => {});
             }
         });
 
     } catch (err) {
-        console.error(err);
+        console.error("Fatal Error:", err);
         setTimeout(start, 10000);
     }
 }
 
 start();
-        
+    
