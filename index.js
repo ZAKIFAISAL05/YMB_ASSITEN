@@ -1,6 +1,6 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.3 (Optimized & MongoDB Auth)
+ * Versi: 1.2.3 (Final Stable - Anti Lag)
  * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
  * Status Auto-Cleaning: DISABLED (File Abadi)
  */
@@ -92,7 +92,7 @@ const saveConfig = () => {
     try {
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
     } catch (e) { 
-        console.error("❌ Gagal menyimpan config ke volume penyimpanan"); 
+        console.error("❌ Gagal menyimpan config"); 
     }
 };
 
@@ -105,10 +105,8 @@ let sock;
 let logs = [];
 let stats = { pesanMasuk: 0, totalLog: 0 };
 
-// Memberikan akses publik ke folder files
 app.use('/files', express.static(PUBLIC_FILES_PATH));
 
-// Route khusus untuk menampilkan PDF dan Gambar
 app.get("/tugas/:filenames", (req, res) => {
     const filenames = req.params.filenames.split(','); 
     const protocol = req.protocol;
@@ -119,13 +117,13 @@ app.get("/tugas/:filenames", (req, res) => {
 });
 
 /**
- * LOGGING SYSTEM
+ * LOGGING SYSTEM (Optimized)
  */
 const addLog = (msg) => {
     const time = new Date().toLocaleTimeString('id-ID');
     logs.unshift(`<span style="color: #00ff73;">[${time}]</span> <span style="color: #ffffff !important;">${msg}</span>`);
     stats.totalLog++;
-    if (logs.length > 30) logs.pop(); // Optimasi memori log
+    if (logs.length > 25) logs.pop(); // Batasi log di dashboard agar tidak berat
 };
 
 /**
@@ -136,37 +134,31 @@ app.get("/toggle/:feature", (req, res) => {
     if (botConfig.hasOwnProperty(feat)) {
         botConfig[feat] = !botConfig[feat];
         saveConfig();
-        const status = botConfig[feat] ? 'ON' : 'OFF';
-        addLog(`Sistem ${feat} diubah -> ${status}`);
+        addLog(`Sistem ${feat} diubah -> ${botConfig[feat] ? 'ON' : 'OFF'}`);
     }
     res.redirect("/");
 });
 
-// Route Utama Dashboard
 app.get("/", (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(renderDashboard(isConnected, qrCodeData, botConfig, stats, logs, port));
 });
 
-// Menjalankan server Express
 app.listen(port, "0.0.0.0", () => {
     console.log(`✅ Web Dashboard aktif di port ${port}`);
 });
 
 /**
  * CORE BOT FUNCTION
- * Menggunakan MongoDB URI untuk stabilitas login
  */
 async function start() {
     const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority";
 
     try {
-        addLog("⏳ Menghubungkan ke Database MongoDB...");
+        addLog("⏳ Menghubungkan MongoDB...");
         const { state, saveCreds } = await useMongoDBAuthState(MONGODB_URI);
-
         const { version } = await fetchLatestBaileysVersion();
 
-        // Konfigurasi koneksi socket (Anti-Lag)
         sock = makeWASocket({
             version,
             auth: { 
@@ -174,41 +166,39 @@ async function start() {
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })) 
             },
             printQRInTerminal: false,
-            logger: pino({ level: "fatal" }),
+            logger: pino({ level: "fatal" }), // Matikan spam log Baileys
             browser: ["Syteam-Bot", "Chrome", "1.0.0"],
-            syncFullHistory: false, // Penting: Jangan sinkron pesan lama agar tidak LAG
-            connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 0
+            syncFullHistory: false, // ANTI LAG: Jangan ambil chat lama
+            connectTimeoutMs: 60000
         });
 
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect, qr } = update;
-            
             if (qr) qrCodeData = await QRCode.toDataURL(qr);
             
             if (connection === "close") {
                 isConnected = false;
                 const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
                 if (shouldReconnect) {
-                    addLog("🔴 Koneksi terputus, menyambung ulang...");
-                    setTimeout(start, 5000);
+                    addLog("🔴 Putus, menyambung kembali...");
+                    setTimeout(start, 7000); // Beri jeda lebih lama sebelum reconnect
                 } else {
-                    addLog("⚠️ Bot Logout. Silakan scan ulang.");
+                    addLog("⚠️ Logout. Silakan scan ulang.");
                 }
             } else if (connection === "open") {
                 isConnected = true; 
                 qrCodeData = ""; 
-                addLog("🟢 Bot Berhasil Terhubung ke WhatsApp!");
+                addLog("🟢 Bot Berhasil Terhubung!");
                 
-                // Inisialisasi scheduler dengan jeda agar tidak spike CPU
-                setTimeout(() => initQuizScheduler(sock, botConfig), 2000);
-                setTimeout(() => initJadwalBesokScheduler(sock, botConfig), 4000);
-                setTimeout(() => initSmartFeedbackScheduler(sock, botConfig), 6000);
-                setTimeout(() => initListPrMingguanScheduler(sock, botConfig), 8000);
-                setTimeout(() => initSahurScheduler(sock, botConfig), 10000);
-                setTimeout(() => initTkaScheduler(sock, botConfig), 12000);
+                // JEDA SCHEDULER: Biar tidak crash saat baru nyala
+                setTimeout(() => { if(isConnected) initQuizScheduler(sock, botConfig) }, 3000);
+                setTimeout(() => { if(isConnected) initJadwalBesokScheduler(sock, botConfig) }, 6000);
+                setTimeout(() => { if(isConnected) initSmartFeedbackScheduler(sock, botConfig) }, 9000);
+                setTimeout(() => { if(isConnected) initListPrMingguanScheduler(sock, botConfig) }, 12000);
+                setTimeout(() => { if(isConnected) initSahurScheduler(sock, botConfig) }, 15000);
+                setTimeout(() => { if(isConnected) initTkaScheduler(sock, botConfig) }, 18000);
             }
         });
 
@@ -218,28 +208,22 @@ async function start() {
                 if (!msg.message || msg.key.fromMe) return;
                 
                 stats.pesanMasuk++;
-                const senderName = msg.pushName || 'User';
-                if (stats.pesanMasuk % 5 === 0) addLog(`📩 Memproses pesan dari: ${senderName}`);
+                if (stats.pesanMasuk % 3 === 0) addLog(`📩 Pesan masuk dari: ${msg.pushName || 'User'}`);
                 
-                await handleMessages(sock, m, botConfig, { 
-                    getWeekDates, 
-                    sendJadwalBesokManual 
-                });
+                await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual })
+                      .catch(e => console.log("Handler Error: ", e.message));
             }
         });
 
     } catch (err) {
-        addLog("❌ Error: " + err.message);
+        addLog("❌ Error Fatal: " + err.message);
         setTimeout(start, 10000);
     }
 }
 
-/**
- * EKSEKUSI PROGRAM
- */
 start();
 
 /**
  * Akhir dari file index.js.
- * Menjaga struktur tetap rapi dan fungsional.
+ * Tetap rapi dan stabil.
  */
