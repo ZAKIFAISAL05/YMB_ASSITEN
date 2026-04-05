@@ -2,7 +2,6 @@
  * SYTEAM-BOT MAIN SERVER
  * Versi: 1.2.0
  * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
- * Status Auto-Cleaning: DISABLED (File Abadi)
  */
 
 const { 
@@ -12,10 +11,12 @@ const {
     makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
 
-// --- PERBAIKAN DI SINI: Tanpa kurung kurawal ---
-const useMongoDBAuthState = require('baileys-mongodb'); 
+// --- PERBAIKAN IMPORT MONGODB ---
 const mongoose = require('mongoose'); 
-// ----------------------------------------------
+const mongoAuth = require('baileys-mongodb'); 
+// Ambil fungsi defaultnya secara manual untuk menghindari TypeError
+const useMongoDBAuthState = mongoAuth.default || mongoAuth; 
+// --------------------------------
 
 const pino = require("pino");
 const express = require("express");
@@ -42,50 +43,32 @@ const { initTkaScheduler } = require('./tkaReminder');
 const { renderDashboard } = require('./views/dashboard'); 
 const { renderMediaView } = require('./views/mediaView'); 
 
-// --- KONFIGURASI PATH DINAMIS ---
+// --- KONFIGURASI PATH ---
 const VOLUME_PATH = '/app/auth_info';
 const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
-if (!fs.existsSync(VOLUME_PATH)) {
-    fs.mkdirSync(VOLUME_PATH, { recursive: true });
-}
-if (!fs.existsSync(PUBLIC_FILES_PATH)) {
-    fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
-}
+if (!fs.existsSync(VOLUME_PATH)) fs.mkdirSync(VOLUME_PATH, { recursive: true });
+if (!fs.existsSync(PUBLIC_FILES_PATH)) fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
 
 let botConfig = { 
-    quiz: true, 
-    jadwalBesok: true, 
-    smartFeedback: true, 
-    prMingguan: true, 
-    sahur: true,
-    tkaReminder: true 
+    quiz: true, jadwalBesok: true, smartFeedback: true, 
+    prMingguan: true, sahur: true, tkaReminder: true 
 };
 
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
-            const parsed = JSON.parse(data);
-            Object.assign(botConfig, parsed);
-            console.log("✅ Config Berhasil Dimuat dari Volume");
-        } else {
-            fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
-            console.log("ℹ️ Membuat file konfigurasi baru...");
+            Object.assign(botConfig, JSON.parse(data));
         }
-    } catch (e) { 
-        console.error("❌ Gagal memuat config:", e.message); 
-    }
+    } catch (e) { console.error("❌ Gagal memuat config:", e.message); }
 }
 loadConfig();
 
 const saveConfig = () => {
-    try {
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
-    } catch (e) { 
-        console.error("❌ Gagal menyimpan config ke volume penyimpanan"); 
-    }
+    try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2)); } 
+    catch (e) { console.error("❌ Gagal menyimpan config"); }
 };
 
 const app = express();
@@ -100,9 +83,7 @@ app.use('/files', express.static(PUBLIC_FILES_PATH));
 
 app.get("/tugas/:filenames", (req, res) => {
     const filenames = req.params.filenames.split(','); 
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const fileUrls = filenames.map(name => `${protocol}://${host}/files/${name}`); 
+    const fileUrls = filenames.map(name => `${req.protocol}://${req.get('host')}/files/${name}`); 
     res.setHeader('Content-Type', 'text/html');
     res.send(renderMediaView(fileUrls));
 });
@@ -119,8 +100,7 @@ app.get("/toggle/:feature", (req, res) => {
     if (botConfig.hasOwnProperty(feat)) {
         botConfig[feat] = !botConfig[feat];
         saveConfig();
-        const status = botConfig[feat] ? 'ON' : 'OFF';
-        addLog(`Sistem ${feat} diubah -> ${status}`);
+        addLog(`Sistem ${feat} diubah -> ${botConfig[feat] ? 'ON' : 'OFF'}`);
     }
     res.redirect("/");
 });
@@ -137,20 +117,18 @@ app.listen(port, "0.0.0.0", () => {
 async function start() {
     try {
         addLog("⏳ Mencoba menghubungkan ke MongoDB Atlas...");
-        await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 20000, 
-        });
+        // Pastikan variabel MONGODB_URI di dashboard hosting sudah benar
+        await mongoose.connect(process.env.MONGODB_URI);
         addLog("🗄️ Terhubung ke MongoDB Atlas.");
     } catch (err) {
         addLog("❌ Gagal konek MongoDB: " + err.message);
-        console.error("MongoDB Connection Error:", err);
         setTimeout(start, 10000);
         return;
     }
 
     const { version } = await fetchLatestBaileysVersion();
     
-    // Inisialisasi Auth State dari MongoDB
+    // Mengambil koleksi untuk sesi
     const collection = mongoose.connection.collection('sessions');
     const { state, saveCreds } = await useMongoDBAuthState(collection);
 
@@ -165,7 +143,6 @@ async function start() {
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         syncFullHistory: false,
         connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 0,
         keepAliveIntervalMs: 10000
     });
 
@@ -173,16 +150,13 @@ async function start() {
 
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
         if (qr) {
             qrCodeData = await QRCode.toDataURL(qr);
             addLog("🔄 QR Code baru dibuat, silakan scan di Dashboard.");
         }
-        
         if (connection === "close") {
             isConnected = false;
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) {
+            if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
                 addLog("🔴 Koneksi terputus, mencoba menyambung ulang...");
                 setTimeout(start, 5000);
             } else {
@@ -206,15 +180,9 @@ async function start() {
         if (m.type === 'notify') {
             const msg = m.messages[0];
             if (!msg.message || msg.key.fromMe) return;
-            
             stats.pesanMasuk++;
-            const senderName = msg.pushName || 'User';
-            addLog(`📩 Pesan masuk dari: ${senderName}`);
-            
-            await handleMessages(sock, m, botConfig, { 
-                getWeekDates, 
-                sendJadwalBesokManual 
-            });
+            addLog(`📩 Pesan masuk dari: ${msg.pushName || 'User'}`);
+            await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual });
         }
     });
 }
