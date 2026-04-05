@@ -7,11 +7,12 @@
 
 const { 
     default: makeWASocket, 
-    useMultiFileAuthState, 
     DisconnectReason, 
     fetchLatestBaileysVersion, 
     makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
+const { useMongoDBAuthState } = require('baileys-mongodb'); // Tambahan untuk MongoDB
+const mongoose = require('mongoose'); // Tambahan untuk MongoDB
 const pino = require("pino");
 const express = require("express");
 const QRCode = require("qrcode");
@@ -141,8 +142,13 @@ app.listen(port, "0.0.0.0", () => {
  * CORE BOT FUNCTION
  */
 async function start() {
+    // Koneksi ke MongoDB Atlas
+    await mongoose.connect(process.env.MONGODB_URI);
+    addLog("🗄️ Terhubung ke MongoDB Atlas.");
+
     const { version } = await fetchLatestBaileysVersion();
-    const { state, saveCreds } = await useMultiFileAuthState(VOLUME_PATH);
+    // Menggunakan MongoDB untuk menyimpan Auth State
+    const { state, saveCreds } = await useMongoDBAuthState(mongoose.connection.collection('sessions'));
 
     sock = makeWASocket({
         version,
@@ -150,9 +156,9 @@ async function start() {
             creds: state.creds, 
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
         },
-        printQRInTerminal: true, // Diaktifkan agar bisa cek manual di terminal jika web error
+        printQRInTerminal: true,
         logger: pino({ level: "silent" }),
-        browser: ["Ubuntu", "Chrome", "20.0.04"], // Identitas browser lebih stabil
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
         syncFullHistory: false,
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 0,
@@ -176,7 +182,7 @@ async function start() {
                 addLog("🔴 Koneksi terputus, mencoba menyambung ulang...");
                 setTimeout(start, 5000);
             } else {
-                addLog("⚠️ Bot Logout. Silakan hapus folder auth_info dan scan ulang.");
+                addLog("⚠️ Bot Logout. Silakan hapus data di MongoDB dan scan ulang.");
             }
         } else if (connection === "open") {
             isConnected = true; 
