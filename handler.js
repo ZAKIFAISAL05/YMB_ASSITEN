@@ -8,17 +8,20 @@ const ADMIN_RAW = ['6289531549103', '171425214255294', '6285158738155' , '241849
 
 function getClosestCommand(cmd) {
     const commandsMap = {
-        '!menu': '!bantuan',
-        '!p': '!cekbot',
-        '!pr': '!list_pr',
-        '!deadline': '!tugas_lama'
+        'menu': 'bantuan',
+        'p': 'cekbot',
+        'pr': 'list_pr',
+        'deadline': 'tugas_lama',
+        'add': 'lapor',
+        'tambah': 'lapor',
+        'hapus': 'lapor'
     };
 
     if (commandsMap[cmd]) return commandsMap[cmd];
 
     const validCommands = [
-        '!cekbot', '!list_pr', '!tugas_lama', '!bantuan', '!jadwal', '!tambah_pr', '!hapus_pr', 
-        '!update', '!update_jadwal', '!hapus', '!grup', '!polling', '!info', '!reset-bot', '!data', '!cek_db', '!deadline', '!jadwal_baru'
+        'cekbot', 'list_pr', 'tugas_lama', 'bantuan', 'jadwal', 'lapor', 
+        'update', 'update_jadwal', 'hapus', 'grup', 'polling', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru', 'menu'
     ];
 
     if (validCommands.includes(cmd)) return null;
@@ -50,78 +53,57 @@ async function handleMessages(sock, m, botConfig, utils) {
             return await sock.sendMessage(sender, { text: response }, { quoted: msg });
         }
 
-        // Check Format Tanpa Tanda Seru
-        const triggers = ['cekbot', 'list_pr', 'tugas_lama', 'bantuan', 'jadwal', 'tambah_pr', 'hapus_pr', 'update', 'update_jadwal', 'hapus', 'grup', 'info', 'data', 'menu', 'pr', 'deadline', 'jadwal_baru'];
-        const firstWord = textLower.split(' ')[0].replace('!', '');
-        
-        if (!body.startsWith('!') && triggers.includes(firstWord)) {
-            return await sock.sendMessage(sender, { text: `⚠️ *Format Salah!*\n\nGunakan tanda seru (*!*) di depan perintah.\n💡 Contoh: *!bantuan*` });
-        }
-
-        if (!body.startsWith('!')) return;
-
+        // Ambil kata pertama dan hilangkan simbol ! jika ada
         const args = body.split(' ');
-        const cmd = args[0].toLowerCase();
+        const cmd = args[0].toLowerCase().replace('!', '');
 
-        // --- LOGIKA MENU BANTUAN OTOMATIS ---
-        if (cmd === '!bantuan') {
-            // Menu dasar untuk semua (Siswa & Admin)
+        // --- LOGIKA MENU BANTUAN / MENU ---
+        if (['bantuan', 'menu', 'help'].includes(cmd)) {
             let menuTeks = 
                 `✨ *MENU UTAMA SYTEAM-BOT* ✨\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
                 `Halo *${pushName}*! Berikut perintah kamu:\n\n` +
-                `📝 *!list_pr* -> Liat daftar PR\n` +
-                `📆 *!jadwal* -> Liat jadwal pelajaran\n` +
-                `➕ *!tambah_pr* -> Lapor PR baru\n` +
-                `🗑️ *!hapus_pr* -> Request hapus PR\n` +
-                `⏳ *!tugas_lama* -> PR belum dikumpul\n` +
-                `⚡ *!cekbot* -> Cek status bot\n`;
+                `📝 *pr* -> Liat daftar PR\n` +
+                `📆 *jadwal* -> Liat jadwal pelajaran\n` +
+                `📢 *lapor* -> Tambah/Hapus PR (Lapor Admin)\n` +
+                `⏳ *deadline* -> PR belum dikumpul\n` +
+                `⚡ *p* -> Cek status bot\n`;
 
-            // Jika ADMIN, tambahkan panduan lengkap di bawahnya
             if (isAdmin) {
                 menuTeks += 
                     `\n🛠️ *PANDUAN LENGKAP PENGURUS (ADMIN)*\n` +
                     `━━━━━━━━━━━━━━━━━━━━\n` +
                     `✅ *!update [hari] [mapel] [tugas]*\n` +
-                    `_Fungsi: Masukin PR ke web/database dan lasung ke kirim ke grup._\n` +
-                    `_Contoh: !update senin mtk hal 10_\n\n` +
                     `📢 *!info [pesan]*\n` +
-                    `_Fungsi: Kirim pengumuman ke pengumuman y.m.b_\n\n` +
                     `❌ *!hapus [hari] [mapel]*\n` +
-                    `_Fungsi: Hapus tugas. Pakai "semua" untuk hapus semua PR di hari itu._\n` +
-                    `_Contoh: !hapus senin mtk_\n\n` +
                     `📅 *!update_jadwal [hari] [mapel] [tugas]*\n` +
-                    `_Fungsi: Masukin PR ke web/database._\n` +
-                    `_Contoh: !update senin mtk hal 10_\n\n` +
-                    `📂 *!cek_db*\n` +
-                    `_Fungsi: Intip data mentah database._\n\n` +
-                    `🔄 *!jadwal_baru*\n` +
-                    `_Fungsi: Sinkronisasi ulang jadwal pelajaran._\n\n` +
-                    `⏳ *!deadline [tugas]*\n` +
-                    `_Fungsi: Update daftar tugas lama yang belum dikumpul._\n`;
+                    `📂 *!cek_db* -> Cek data mentah\n` +
+                    `🔄 *!jadwal_baru* -> Sync jadwal\n` +
+                    `⏳ *!deadline [tugas]* -> Update DL\n`;
             } 
 
-            menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Gunakan tanda ! di depan perintah_`;
+            menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Tips: Sekarang bisa ketik tanpa tanda (!) _`;
             
             return await sock.sendMessage(sender, { text: menuTeks });
         }
 
-        // Routing Perintah User
-        const userCmds = ['!cekbot', '!list_pr', '!tugas_lama', '!jadwal', '!tambah_pr', '!hapus_pr'];
+        // Routing Perintah User (Ditambah alias agar lebih mudah)
+        const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah', 'hapus'];
         
-        // Routing Perintah Admin (Termasuk !deadline dan !jadwal_baru)
-        const adminCmds = ['!update', '!update_jadwal', '!hapus', '!grup', '!info', '!reset-bot', '!data', '!cek_db', '!deadline', '!jadwal_baru'];
+        // Routing Perintah Admin
+        const adminCmds = ['update', 'update_jadwal', 'hapus_db', 'grup', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru'];
 
         if (userCmds.includes(cmd)) {
-            await handleUserCommands(sock, msg, cmd, args, utils);
+            // Kita kirim '!' + cmd agar userHandler tetap mengenali formatnya jika diperlukan
+            await handleUserCommands(sock, msg, '!' + cmd, args, utils);
         } else if (adminCmds.includes(cmd)) {
             if (!isAdmin) return await sock.sendMessage(sender, { text: nonAdminMsg });
-            await handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMsg);
+            await handleAdminCommands(sock, msg, '!' + cmd, args, utils, body, nonAdminMsg);
         } else {
             const suggestion = getClosestCommand(cmd);
             if (suggestion) {
                 return await sock.sendMessage(sender, { 
-                    text: `🧐 *PERINTAH TIDAK DIKENAL*\n━━━━━━━━━━━━━━━━━━━━\nMaksud kamu: *${suggestion}* ?\n\nKetik *!bantuan* untuk melihat menu.` 
+                    text: `🧐 *PERINTAH TIDAK DIKENAL*\n━━━━━━━━━━━━━━━━━━━━\nMaksud kamu: *${suggestion}* ?\n\nKetik *menu* untuk melihat daftar perintah.` 
                 });
             }
         }
