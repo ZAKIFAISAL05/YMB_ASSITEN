@@ -5,7 +5,7 @@ const fs = require('fs');
 const axios = require('axios'); // Ditambahkan untuk hit API tanggal merah
 
 const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
-const KUIS_PATH = '/app/auth_info/kuis.json'; // Path volume agar sync
+// Bagian KUIS_PATH tidak dihapus agar barisan tetap sama, tapi logika dialihkan ke MongoDB
 
 function getWIBDate() {
     return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
@@ -61,7 +61,7 @@ async function initSahurScheduler(sock, botConfig) {
 
     const PESAN_SAHUR_LIST = [
         `🌙 *REMINDER SAHUR* 🕌\n━━━━━━━━━━━━━━━━━━━━\n\nSelamat makan sahur semuanya! Jangan lupa niat puasa dan perbanyak minum air putih ya.\n\n_🕒 Waktu: 04:00 WIB (Sebelum Subuh)_\n\n━━━━━━━━━━━━━━━━━━━━\n*Semoga puasanya lancar!* ✨`,
-        `🌙 *SAHUR.. SAHURRR!* 🕌\n━━━━━━━━━━━━━━━━━━━━\n\nAyo bangun, waktunya mengisi energi untuk ibadah hari ini. Jangan lupa niatnya ya!\n\n_🕒 Waktu: 04:00 WIB_\n\n━━━━━━━━━━━━━━━━━━━━\n*Semangat puasanya!* 💪`,
+        `🌙 *SAHUR.. SAHURRR!* 1️⃣\n━━━━━━━━━━━━━━━━━━━━\n\nAyo bangun, waktunya mengisi energi untuk ibadah hari ini. Jangan lupa niatnya ya!\n\n_🕒 Waktu: 04:00 WIB_\n\n━━━━━━━━━━━━━━━━━━━━\n*Semangat puasanya!* 💪`,
         `🌙 *BERKAH SAHUR* 🕌\n━━━━━━━━━━━━━━━━━━━━\n\n"Bersahurlah kalian, karena pada sahur itu ada keberkahan." (HR. Bukhari & Muslim). Selamat makan sahur!\n\n_🕒 Waktu: 04:00 WIB_\n\n━━━━━━━━━━━━━━━━━━━━\n*Semoga berkah dan kuat sampai Maghrib!* 😇`,
         `🌙 *REMINDER SAHUR* 🕌\n━━━━━━━━━━━━━━━━━━━━\n\nMasih ada waktu buat makan dan minum. Yuk, disegerakan sahurnya sebelum imsak tiba!\n\n_🕒 Waktu: 04:00 WIB_\n\n━━━━━━━━━━━━━━━━━━━━\n*Happy Fasting everyone!* ✨`
     ];
@@ -86,7 +86,7 @@ async function initSahurScheduler(sock, botConfig) {
     }, 35000);
 }
 
-// --- FUNGSI QUIZ (DIUPDATE: TANPA CEK API TANGGAL MERAH + PROTEKSI CRASH) ---
+// --- FUNGSI QUIZ (DIUPDATE: MENGGUNAKAN MONGODB) ---
 async function initQuizScheduler(sock, botConfig) {
     console.log("✅ Scheduler Polling Aktif (Menyesuaikan Hari & Jam)");
     let lastSentDate = ""; 
@@ -99,24 +99,19 @@ async function initQuizScheduler(sock, botConfig) {
         const hariAngka = now.getDay(); 
         const tglID = `${now.getDate()}-${now.getMonth()}-${now.getFullYear()}`;
 
-        // Hanya berjalan di hari sekolah (Senin - Jumat)
         if (hariAngka < 1 || hariAngka > 5) return;
 
-        // Tentukan jam kirim
-        let jamKirim = 13; // Selasa - Kamis jam 13:00
-        if (hariAngka === 1) jamKirim = 14; // Senin jam 14:00
-        if (hariAngka === 5) jamKirim = 11; // Jumat jam 11:00
+        let jamKirim = 13; 
+        if (hariAngka === 1) jamKirim = 14; 
+        if (hariAngka === 5) jamKirim = 11; 
 
         if (jam === jamKirim && menit === 0 && lastSentDate !== tglID) {
             try {
-                // Membaca objek QUIZ_BANK menggunakan string key
                 const kuisHariIni = QUIZ_BANK[hariAngka.toString()];
                 
-                // Pengaman: pastikan array kuis ada dan tidak kosong
                 if (kuisHariIni && kuisHariIni.length > 0) {
                     const randomQuiz = kuisHariIni[Math.floor(Math.random() * kuisHariIni.length)];
                     
-                    // Pengaman: pastikan properti question dan options ada agar tidak undefined
                     if (randomQuiz && randomQuiz.question && randomQuiz.options) {
                         const sentMsg = await sock.sendMessage(ID_GRUP_TUJUAN, {
                             poll: { name: `🕒 *PULANG SEKOLAH CHECK*\n${randomQuiz.question}`, values: randomQuiz.options, selectableCount: 1 }
@@ -126,11 +121,12 @@ async function initQuizScheduler(sock, botConfig) {
                             msgId: sentMsg.key.id,
                             data: randomQuiz,
                             votes: {},
-                            targetJam: jamKirim + 2, // Feedback menyusul 2 jam setelah kuis dikirim
+                            targetJam: jamKirim + 2,
                             tglID: tglID
                         };
 
-                        fs.writeFileSync(KUIS_PATH, JSON.stringify(kuisAktif, null, 2));
+                        // Simpan ke MongoDB melalui state bot (Baileys-MongoDB)
+                        await sock.executeUpdate('kuis_aktif', kuisAktif);
                         lastSentDate = tglID; 
                     }
                 }
@@ -139,19 +135,16 @@ async function initQuizScheduler(sock, botConfig) {
     }, 35000);
 }
 
-// --- FUNGSI SMART FEEDBACK (DIUPDATE: ANTI ERROR 0 SUARA & HANDLE HASIL SERI) ---
+// --- FUNGSI SMART FEEDBACK (DIUPDATE: MENGGUNAKAN MONGODB) ---
 async function initSmartFeedbackScheduler(sock, botConfig) {
     console.log("✅ Scheduler Smart Feedback Aktif");
     let lastProcessedId = "";
     setInterval(async () => {
         if (!botConfig || botConfig.smartFeedback === false) return;
 
-        let kuisAktif = {};
-        if (fs.existsSync(KUIS_PATH)) {
-            try {
-                kuisAktif = JSON.parse(fs.readFileSync(KUIS_PATH, 'utf-8'));
-            } catch (e) { return; }
-        } else { return; }
+        // Ambil data kuis aktif dari MongoDB
+        let kuisAktif = await sock.executeGet('kuis_aktif');
+        if (!kuisAktif || !kuisAktif.msgId) return;
 
         const now = getWIBDate();
         const jamSekarang = now.getHours();
@@ -163,7 +156,7 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
             try {
                 const votesArray = Object.values(kuisAktif.votes || {});
                 let maxVotes = 0;
-                let topIdxs = []; // Menggunakan array untuk menampung jika ada hasil seri
+                let topIdxs = []; 
 
                 if (votesArray.length > 0) {
                     const counts = {};
@@ -173,35 +166,30 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
                         }
                     });
                     
-                    // Mencari suara terbanyak
                     if (kuisAktif.data && kuisAktif.data.options) {
                         for (let i = 0; i < kuisAktif.data.options.length; i++) {
                             let currentCount = counts[i] || 0;
                             if (currentCount > maxVotes) { 
                                 maxVotes = currentCount; 
-                                topIdxs = [i]; // Reset list pemenang dengan yang tertinggi
+                                topIdxs = [i]; 
                             } else if (currentCount === maxVotes && currentCount > 0) {
-                                topIdxs.push(i); // Tambahkan ke list jika jumlah suaranya sama kuat
+                                topIdxs.push(i); 
                             }
                         }
                     }
                 }
 
-                // Logika Pengiriman Pesan
                 if (maxVotes === 0) {
-                    // JIKA TIDAK ADA YANG MEMILIH SAMA SEKALI
                     console.log("Belum ada yang mengisi polling. Bot tidak mengirimkan feedback.");
                     
                 } else if (topIdxs.length > 1) {
-                    // JIKA HASILNYA SERI
                     const teksSeri = `⚔️ *HASIL SERI!* \nWah, pendapat kalian seimbang nih antara beberapa pilihan. Kompak banget kelas 9G! \n\n━━━━━━━━━━━━━━━━━━━━\n_Respon otomatis jam ${jamSekarang}:00_`;
                     await sock.sendMessage(ID_GRUP_TUJUAN, { text: teksSeri });
                     
                     lastProcessedId = kuisAktif.msgId;
-                    if (fs.existsSync(KUIS_PATH)) fs.unlinkSync(KUIS_PATH);
+                    await sock.executeDelete('kuis_aktif');
                     
                 } else {
-                    // JIKA ADA PEMENANG TUNGGAL (SEPERTI BIASA)
                     const topIdx = topIdxs[0];
                     const teksOpsi = (kuisAktif.data.options && kuisAktif.data.options[topIdx]) || "Pilihan Kosong";
                     const teksFeedback = (kuisAktif.data.feedbacks && kuisAktif.data.feedbacks[topIdx]) || "Terima kasih sudah memilih!";
@@ -210,7 +198,7 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
                     await sock.sendMessage(ID_GRUP_TUJUAN, { text: teksHasil });
                     
                     lastProcessedId = kuisAktif.msgId;
-                    if (fs.existsSync(KUIS_PATH)) fs.unlinkSync(KUIS_PATH);
+                    await sock.executeDelete('kuis_aktif');
                 }
             } catch (err) { console.error("Feedback Error:", err); }
         }
@@ -250,7 +238,6 @@ async function initListPrMingguanScheduler(sock, botConfig) {
         
         if (hariIni === 6 && jam === 10 && menit === 0 && lastSentList !== tglID) {
             try {
-                // Cek tanggal merah
                 const statusLibur = await isTanggalMerah();
                 if (statusLibur) {
                     console.log(`[PR] Hari libur nasional. Bot tidak mengirim list PR.`);
