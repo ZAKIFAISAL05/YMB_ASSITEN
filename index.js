@@ -142,9 +142,20 @@ app.listen(port, "0.0.0.0", () => {
  * CORE BOT FUNCTION
  */
 async function start() {
-    // Koneksi ke MongoDB Atlas
-    await mongoose.connect(process.env.MONGODB_URI);
-    addLog("🗄️ Terhubung ke MongoDB Atlas.");
+    try {
+        // Koneksi ke MongoDB Atlas dengan proteksi error
+        addLog("⏳ Mencoba menghubungkan ke MongoDB Atlas...");
+        await mongoose.connect(process.env.MONGODB_URI, {
+            serverSelectionTimeoutMS: 20000, // Timeout 20 detik
+        });
+        addLog("🗄️ Terhubung ke MongoDB Atlas.");
+    } catch (err) {
+        addLog("❌ Gagal konek MongoDB: " + err.message);
+        console.error("MongoDB Connection Error:", err);
+        // Jika gagal, coba lagi dalam 10 detik
+        setTimeout(start, 10000);
+        return;
+    }
 
     const { version } = await fetchLatestBaileysVersion();
     // Menggunakan MongoDB untuk menyimpan Auth State
