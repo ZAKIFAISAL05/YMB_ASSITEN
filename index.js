@@ -2,7 +2,7 @@
  * SYTEAM-BOT MAIN SERVER
  * Versi: 1.2.0
  * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
- * Status Auth: MongoDB Atlas (Permanent)
+ * Status Auth: MongoDB Atlas (Permanent + Fallback System)
  */
 
 const { 
@@ -15,7 +15,7 @@ const {
 const mongoose = require('mongoose'); 
 const mongoAuth = require('baileys-mongodb'); 
 
-// Pastikan fungsi auth dipanggil dengan benar (mengatasi TypeError)
+// Pastikan fungsi auth dipanggil dengan benar
 const useMongoDBAuthState = mongoAuth.default || mongoAuth; 
 
 const pino = require("pino");
@@ -45,7 +45,6 @@ const VOLUME_PATH = '/app/auth_info';
 const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
-// Inisialisasi folder jika belum ada
 if (!fs.existsSync(VOLUME_PATH)) fs.mkdirSync(VOLUME_PATH, { recursive: true });
 if (!fs.existsSync(PUBLIC_FILES_PATH)) fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
 
@@ -54,9 +53,6 @@ let botConfig = {
     prMingguan: true, sahur: true, tkaReminder: true 
 };
 
-/**
- * FUNGSI LOAD & SAVE CONFIG
- */
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
@@ -73,7 +69,7 @@ const saveConfig = () => {
     catch (e) { console.error("❌ Gagal menyimpan config"); }
 };
 
-// --- SETTING WEB SERVER (EXPRESS) ---
+// --- WEB SERVER ---
 const app = express();
 const port = process.env.PORT || 8080;
 let qrCodeData = "";
@@ -84,7 +80,6 @@ let stats = { pesanMasuk: 0, totalLog: 0 };
 
 app.use('/files', express.static(PUBLIC_FILES_PATH));
 
-// Route Media Viewer
 app.get("/tugas/:filenames", (req, res) => {
     const filenames = req.params.filenames.split(','); 
     const fileUrls = filenames.map(name => `${req.protocol}://${req.get('host')}/files/${name}`); 
@@ -124,8 +119,11 @@ app.listen(port, "0.0.0.0", () => {
 async function start() {
     try {
         addLog("⏳ Menghubungkan ke MongoDB Atlas...");
-        // MONGODB_URI harus di-set di Environment Variables hosting
-        await mongoose.connect(process.env.MONGODB_URI);
+        
+        // SISTEM FALLBACK: Jika Env Variable kosong, pakai link manual ini
+        const uri = process.env.MONGODB_URI || "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority";
+        
+        await mongoose.connect(uri);
         addLog("🗄️ Database Terhubung.");
     } catch (err) {
         addLog("❌ Database Error: " + err.message);
@@ -135,8 +133,7 @@ async function start() {
 
     const { version } = await fetchLatestBaileysVersion();
     
-    // Inisialisasi Auth State (Penyimpanan Login)
-    // PERBAIKAN: Mengirim koneksi dan string nama koleksi
+    // Auth State MongoDB
     const { state, saveCreds } = await useMongoDBAuthState(mongoose.connection, "sessions");
 
     sock = makeWASocket({
@@ -177,7 +174,6 @@ async function start() {
             qrCodeData = ""; 
             addLog("🟢 Bot Aktif & Terhubung!");
             
-            // Jalankan Scheduler
             initQuizScheduler(sock, botConfig); 
             initJadwalBesokScheduler(sock, botConfig);
             initSmartFeedbackScheduler(sock, botConfig);
@@ -191,11 +187,8 @@ async function start() {
         if (m.type === 'notify') {
             const msg = m.messages[0];
             if (!msg.message || msg.key.fromMe) return;
-            
             stats.pesanMasuk++;
             addLog(`📩 Pesan dari: ${msg.pushName || 'User'}`);
-            
-            // Kirim ke Handler utama
             await handleMessages(sock, m, botConfig, { 
                 getWeekDates, 
                 sendJadwalBesokManual 
