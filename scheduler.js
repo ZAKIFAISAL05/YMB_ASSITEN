@@ -1,11 +1,18 @@
-Const { QUIZ_BANK } = require('./quiz'); 
+const { QUIZ_BANK } = require('./quiz'); 
 const { JADWAL_PELAJARAN: JADWAL_STATIS, MOTIVASI_SEKOLAH } = require('./constants');
 const db = require('./data');
 const fs = require('fs'); 
 const axios = require('axios'); // Ditambahkan untuk hit API tanggal merah
+const path = require('path');
 
 const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
 const KUIS_PATH = '/app/auth_info/kuis.json'; // Path volume agar sync
+
+// Memastikan folder path tersedia agar tidak crash saat writeFileSync
+const folderPath = path.dirname(KUIS_PATH);
+if (!fs.existsSync(folderPath)) {
+    fs.mkdirSync(folderPath, { recursive: true });
+}
 
 function getWIBDate() {
     return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Jakarta"}));
@@ -110,10 +117,10 @@ async function initQuizScheduler(sock, botConfig) {
         if (jam === jamKirim && menit === 0 && lastSentDate !== tglID) {
             try {
                 // Membaca objek QUIZ_BANK menggunakan string key
-                const kuisHariIni = QUIZ_BANK[hariAngka.toString()];
+                const kuisHariIni = QUIZ_BANK ? QUIZ_BANK[hariAngka.toString()] : null;
                 
                 // Pengaman: pastikan array kuis ada dan tidak kosong
-                if (kuisHariIni && kuisHariIni.length > 0) {
+                if (kuisHariIni && Array.isArray(kuisHariIni) && kuisHariIni.length > 0) {
                     const randomQuiz = kuisHariIni[Math.floor(Math.random() * kuisHariIni.length)];
                     
                     // Pengaman: pastikan properti question dan options ada agar tidak undefined
@@ -149,7 +156,9 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
         let kuisAktif = {};
         if (fs.existsSync(KUIS_PATH)) {
             try {
-                kuisAktif = JSON.parse(fs.readFileSync(KUIS_PATH, 'utf-8'));
+                const fileContent = fs.readFileSync(KUIS_PATH, 'utf-8');
+                if (fileContent) kuisAktif = JSON.parse(fileContent);
+                else return;
             } catch (e) { return; }
         } else { return; }
 
@@ -291,8 +300,13 @@ async function sendJadwalBesokManual(sock, targetJid) {
         let hariBesok = (hariIni + 1) % 7;
         if (hariBesok === 0) hariBesok = 1;
         
-        delete require.cache[require.resolve('./constants')];
-        const { JADWAL_PELAJARAN, MOTIVASI_SEKOLAH } = require('./constants');
+        try {
+            delete require.cache[require.resolve('./constants')];
+        } catch (e) {}
+        
+        const constants = require('./constants');
+        const JADWAL_PELAJARAN = constants.JADWAL_PELAJARAN;
+        const MOTIVASI_SEKOLAH = constants.MOTIVASI_SEKOLAH;
 
         const { dates } = getWeekDates();
         const dayLabels = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -338,3 +352,4 @@ module.exports = {
     getWeekDates,
     sendJadwalBesokManual
 };
+        
