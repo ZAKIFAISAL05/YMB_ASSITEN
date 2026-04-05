@@ -1,15 +1,15 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.3 (Optimized)
- * Fokus: Stabilitas & Performa (Anti-Lag)
+ * Versi: 1.2.3 (Optimized & MongoDB Auth)
+ * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
+ * Status Auto-Cleaning: DISABLED (File Abadi)
  */
 
 const { 
     default: makeWASocket, 
     DisconnectReason, 
     fetchLatestBaileysVersion, 
-    makeCacheableSignalKeyStore,
-    useMultiFileAuthState // Backup jika mongo bermasalah
+    makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
 
 const mongoAuth = require('baileys-mongodb'); 
@@ -33,36 +33,70 @@ const {
     sendJadwalBesokManual 
 } = require('./scheduler'); 
 
+// --- IMPORT TKA REMINDER ---
 const { initTkaScheduler } = require('./tkaReminder'); 
-const { renderDashboard } = require('./views/dashboard'); 
 
-// --- KONFIGURASI & PATH ---
+// --- IMPORT UI VIEWS ---
+const { renderDashboard } = require('./views/dashboard'); 
+const { renderMediaView } = require('./views/mediaView'); 
+
+// --- KONFIGURASI PATH DINAMIS ---
 const VOLUME_PATH = '/app/auth_info';
 const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
-if (!fs.existsSync(VOLUME_PATH)) fs.mkdirSync(VOLUME_PATH, { recursive: true });
-if (!fs.existsSync(PUBLIC_FILES_PATH)) fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
+/**
+ * INISIALISASI DIREKTORI
+ */
+if (!fs.existsSync(VOLUME_PATH)) {
+    fs.mkdirSync(VOLUME_PATH, { recursive: true });
+}
+if (!fs.existsSync(PUBLIC_FILES_PATH)) {
+    fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
+}
 
+// --- KONFIGURASI DEFAULT BOT ---
 let botConfig = { 
-    quiz: true, jadwalBesok: true, smartFeedback: true, 
-    prMingguan: true, sahur: true, tkaReminder: true 
+    quiz: true, 
+    jadwalBesok: true, 
+    smartFeedback: true, 
+    prMingguan: true, 
+    sahur: true,
+    tkaReminder: true 
 };
 
-// Optimization: Gunakan Map untuk store sementara yang butuh akses cepat
-const msgRetryCache = new Map();
-
+/**
+ * FUNGSI LOAD CONFIG
+ */
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
-            Object.assign(botConfig, JSON.parse(data));
+            const parsed = JSON.parse(data);
+            Object.assign(botConfig, parsed);
+            console.log("✅ Config Berhasil Dimuat dari Volume");
+        } else {
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
+            console.log("ℹ️ Membuat file konfigurasi baru...");
         }
-    } catch (e) {}
+    } catch (e) { 
+        console.error("❌ Gagal memuat config:", e.message); 
+    }
 }
 loadConfig();
 
-// --- WEB SERVER OPTIMIZATION ---
+/**
+ * FUNGSI SAVE CONFIG
+ */
+const saveConfig = () => {
+    try {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
+    } catch (e) { 
+        console.error("❌ Gagal menyimpan config ke volume penyimpanan"); 
+    }
+};
+
+// --- INISIALISASI EXPRESS SERVER ---
 const app = express();
 const port = process.env.PORT || 8080;
 let qrCodeData = "";
@@ -71,52 +105,80 @@ let sock;
 let logs = [];
 let stats = { pesanMasuk: 0, totalLog: 0 };
 
-// Limit log agar tidak membuat Dashboard lag
-const addLog = (msg) => {
-    const time = new Date().toLocaleTimeString('id-ID');
-    logs.unshift(`<span style="color: #00ff73;">[${time}]</span> ${msg}`);
-    stats.totalLog++;
-    if (logs.length > 30) logs.pop(); // Perkecil history log di memori
-};
-
+// Memberikan akses publik ke folder files
 app.use('/files', express.static(PUBLIC_FILES_PATH));
 
+// Route khusus untuk menampilkan PDF dan Gambar
+app.get("/tugas/:filenames", (req, res) => {
+    const filenames = req.params.filenames.split(','); 
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const fileUrls = filenames.map(name => `${protocol}://${host}/files/${name}`); 
+    res.setHeader('Content-Type', 'text/html');
+    res.send(renderMediaView(fileUrls));
+});
+
+/**
+ * LOGGING SYSTEM
+ */
+const addLog = (msg) => {
+    const time = new Date().toLocaleTimeString('id-ID');
+    logs.unshift(`<span style="color: #00ff73;">[${time}]</span> <span style="color: #ffffff !important;">${msg}</span>`);
+    stats.totalLog++;
+    if (logs.length > 30) logs.pop(); // Optimasi memori log
+};
+
+/**
+ * ENDPOINT KONTROL FITUR
+ */
+app.get("/toggle/:feature", (req, res) => {
+    const feat = req.params.feature;
+    if (botConfig.hasOwnProperty(feat)) {
+        botConfig[feat] = !botConfig[feat];
+        saveConfig();
+        const status = botConfig[feat] ? 'ON' : 'OFF';
+        addLog(`Sistem ${feat} diubah -> ${status}`);
+    }
+    res.redirect("/");
+});
+
+// Route Utama Dashboard
 app.get("/", (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(renderDashboard(isConnected, qrCodeData, botConfig, stats, logs, port));
 });
 
+// Menjalankan server Express
 app.listen(port, "0.0.0.0", () => {
     console.log(`✅ Web Dashboard aktif di port ${port}`);
 });
 
 /**
- * MAIN BOT LOGIC (ANTI-LAG VERSION)
+ * CORE BOT FUNCTION
+ * Menggunakan MongoDB URI untuk stabilitas login
  */
 async function start() {
     const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority";
 
     try {
-        addLog("⏳ Menghubungkan ke Database...");
+        addLog("⏳ Menghubungkan ke Database MongoDB...");
         const { state, saveCreds } = await useMongoDBAuthState(MONGODB_URI);
-        
+
         const { version } = await fetchLatestBaileysVersion();
 
+        // Konfigurasi koneksi socket (Anti-Lag)
         sock = makeWASocket({
             version,
-            // Optimization: Menggunakan cacheable keystore untuk mengurangi I/O database
             auth: { 
                 creds: state.creds, 
                 keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })) 
             },
-            printQRInTerminal: false, // QR diurus dashboard
-            logger: pino({ level: "fatal" }), // Matikan log internal Baileys yang berat
-            browser: ["SYTEAM-BOT", "Chrome", "1.0.0"],
-            syncFullHistory: false, // JANGAN sinkron history lama (Bikin LAG)
-            markOnlineOnConnect: true,
+            printQRInTerminal: false,
+            logger: pino({ level: "fatal" }),
+            browser: ["Syteam-Bot", "Chrome", "1.0.0"],
+            syncFullHistory: false, // Penting: Jangan sinkron pesan lama agar tidak LAG
             connectTimeoutMs: 60000,
-            defaultQueryTimeoutMs: 0, // Hindari timeout pada koneksi lambat
-            msgRetryCounterCache: msgRetryCache, // Gunakan cache map
+            defaultQueryTimeoutMs: 0
         });
 
         sock.ev.on("creds.update", saveCreds);
@@ -124,32 +186,29 @@ async function start() {
         sock.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect, qr } = update;
             
-            if (qr) {
-                qrCodeData = await QRCode.toDataURL(qr);
-                addLog("🔄 QR Code diperbarui.");
-            }
-
+            if (qr) qrCodeData = await QRCode.toDataURL(qr);
+            
             if (connection === "close") {
                 isConnected = false;
                 const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-                
                 if (shouldReconnect) {
-                    addLog("🔴 Koneksi terputus, mencoba lagi...");
+                    addLog("🔴 Koneksi terputus, menyambung ulang...");
                     setTimeout(start, 5000);
                 } else {
-                    addLog("⚠️ Sesi berakhir. Silakan scan ulang.");
+                    addLog("⚠️ Bot Logout. Silakan scan ulang.");
                 }
             } else if (connection === "open") {
                 isConnected = true; 
                 qrCodeData = ""; 
-                addLog("🟢 Bot Aktif & Stabil!");
+                addLog("🟢 Bot Berhasil Terhubung ke WhatsApp!");
                 
-                // Jalankan scheduler secara bertahap agar tidak spike CPU
+                // Inisialisasi scheduler dengan jeda agar tidak spike CPU
                 setTimeout(() => initQuizScheduler(sock, botConfig), 2000);
                 setTimeout(() => initJadwalBesokScheduler(sock, botConfig), 4000);
                 setTimeout(() => initSmartFeedbackScheduler(sock, botConfig), 6000);
                 setTimeout(() => initListPrMingguanScheduler(sock, botConfig), 8000);
-                setTimeout(() => initTkaScheduler(sock, botConfig), 10000);
+                setTimeout(() => initSahurScheduler(sock, botConfig), 10000);
+                setTimeout(() => initTkaScheduler(sock, botConfig), 12000);
             }
         });
 
@@ -159,12 +218,13 @@ async function start() {
                 if (!msg.message || msg.key.fromMe) return;
                 
                 stats.pesanMasuk++;
-                // Jangan log setiap pesan masuk ke dashboard jika traffic tinggi
-                if (stats.pesanMasuk % 5 === 0) addLog(`📩 Memproses ${stats.pesanMasuk} pesan...`);
+                const senderName = msg.pushName || 'User';
+                if (stats.pesanMasuk % 5 === 0) addLog(`📩 Memproses pesan dari: ${senderName}`);
                 
-                // Pastikan handler tidak memblokir proses utama
-                handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual })
-                    .catch(e => console.error("Handler Error:", e));
+                await handleMessages(sock, m, botConfig, { 
+                    getWeekDates, 
+                    sendJadwalBesokManual 
+                });
             }
         });
 
@@ -174,9 +234,12 @@ async function start() {
     }
 }
 
-// Optimization: Handle unhandled rejections agar bot tidak mati mendadak
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
+/**
+ * EKSEKUSI PROGRAM
+ */
 start();
+
+/**
+ * Akhir dari file index.js.
+ * Menjaga struktur tetap rapi dan fungsional.
+ */
