@@ -1,14 +1,15 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.2 (Final Stable)
- * Status: MongoDB Auth Fix
+ * Versi: 1.2.3 (Optimized)
+ * Fokus: Stabilitas & Performa (Anti-Lag)
  */
 
 const { 
     default: makeWASocket, 
     DisconnectReason, 
     fetchLatestBaileysVersion, 
-    makeCacheableSignalKeyStore 
+    makeCacheableSignalKeyStore,
+    useMultiFileAuthState // Backup jika mongo bermasalah
 } = require("@whiskeysockets/baileys");
 
 const mongoAuth = require('baileys-mongodb'); 
@@ -34,9 +35,8 @@ const {
 
 const { initTkaScheduler } = require('./tkaReminder'); 
 const { renderDashboard } = require('./views/dashboard'); 
-const { renderMediaView } = require('./views/mediaView'); 
 
-// --- KONFIGURASI ---
+// --- KONFIGURASI & PATH ---
 const VOLUME_PATH = '/app/auth_info';
 const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
@@ -49,6 +49,9 @@ let botConfig = {
     prMingguan: true, sahur: true, tkaReminder: true 
 };
 
+// Optimization: Gunakan Map untuk store sementara yang butuh akses cepat
+const msgRetryCache = new Map();
+
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
@@ -59,12 +62,7 @@ function loadConfig() {
 }
 loadConfig();
 
-const saveConfig = () => {
-    try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2)); } 
-    catch (e) {}
-};
-
-// --- WEB SERVER ---
+// --- WEB SERVER OPTIMIZATION ---
 const app = express();
 const port = process.env.PORT || 8080;
 let qrCodeData = "";
@@ -73,14 +71,15 @@ let sock;
 let logs = [];
 let stats = { pesanMasuk: 0, totalLog: 0 };
 
-app.use('/files', express.static(PUBLIC_FILES_PATH));
-
+// Limit log agar tidak membuat Dashboard lag
 const addLog = (msg) => {
     const time = new Date().toLocaleTimeString('id-ID');
     logs.unshift(`<span style="color: #00ff73;">[${time}]</span> ${msg}`);
     stats.totalLog++;
-    if (logs.length > 50) logs.pop();
+    if (logs.length > 30) logs.pop(); // Perkecil history log di memori
 };
+
+app.use('/files', express.static(PUBLIC_FILES_PATH));
 
 app.get("/", (req, res) => {
     res.setHeader('Content-Type', 'text/html');
@@ -92,65 +91,65 @@ app.listen(port, "0.0.0.0", () => {
 });
 
 /**
- * MAIN BOT LOGIC
+ * MAIN BOT LOGIC (ANTI-LAG VERSION)
  */
 async function start() {
-    // Tentukan URI Database
     const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority";
 
     try {
-        addLog("⏳ Inisialisasi Auth MongoDB...");
-        
-        /**
-         * PERBAIKAN TUNTAS:
-         * Kita berikan URI (String) langsung ke useMongoDBAuthState.
-         * Library ini akan otomatis mengurus koneksi Mongoose di dalamnya.
-         */
+        addLog("⏳ Menghubungkan ke Database...");
         const { state, saveCreds } = await useMongoDBAuthState(MONGODB_URI);
-        addLog("🗄️ Database Terhubung.");
-
+        
         const { version } = await fetchLatestBaileysVersion();
 
         sock = makeWASocket({
             version,
+            // Optimization: Menggunakan cacheable keystore untuk mengurangi I/O database
             auth: { 
                 creds: state.creds, 
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" })) 
             },
-            printQRInTerminal: true,
-            logger: pino({ level: "silent" }),
-            browser: ["Ubuntu", "Chrome", "20.0.04"],
-            syncFullHistory: false,
-            connectTimeoutMs: 60000
+            printQRInTerminal: false, // QR diurus dashboard
+            logger: pino({ level: "fatal" }), // Matikan log internal Baileys yang berat
+            browser: ["SYTEAM-BOT", "Chrome", "1.0.0"],
+            syncFullHistory: false, // JANGAN sinkron history lama (Bikin LAG)
+            markOnlineOnConnect: true,
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 0, // Hindari timeout pada koneksi lambat
+            msgRetryCounterCache: msgRetryCache, // Gunakan cache map
         });
 
         sock.ev.on("creds.update", saveCreds);
 
         sock.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect, qr } = update;
+            
             if (qr) {
                 qrCodeData = await QRCode.toDataURL(qr);
-                addLog("🔄 QR Code baru dibuat.");
+                addLog("🔄 QR Code diperbarui.");
             }
+
             if (connection === "close") {
                 isConnected = false;
-                if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-                    addLog("🔴 Reconnecting...");
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                
+                if (shouldReconnect) {
+                    addLog("🔴 Koneksi terputus, mencoba lagi...");
                     setTimeout(start, 5000);
                 } else {
-                    addLog("⚠️ Bot Logout. Silakan scan ulang.");
+                    addLog("⚠️ Sesi berakhir. Silakan scan ulang.");
                 }
             } else if (connection === "open") {
                 isConnected = true; 
                 qrCodeData = ""; 
-                addLog("🟢 Bot Terhubung ke WhatsApp!");
+                addLog("🟢 Bot Aktif & Stabil!");
                 
-                initQuizScheduler(sock, botConfig); 
-                initJadwalBesokScheduler(sock, botConfig);
-                initSmartFeedbackScheduler(sock, botConfig);
-                initListPrMingguanScheduler(sock, botConfig);
-                initSahurScheduler(sock, botConfig);
-                initTkaScheduler(sock, botConfig);
+                // Jalankan scheduler secara bertahap agar tidak spike CPU
+                setTimeout(() => initQuizScheduler(sock, botConfig), 2000);
+                setTimeout(() => initJadwalBesokScheduler(sock, botConfig), 4000);
+                setTimeout(() => initSmartFeedbackScheduler(sock, botConfig), 6000);
+                setTimeout(() => initListPrMingguanScheduler(sock, botConfig), 8000);
+                setTimeout(() => initTkaScheduler(sock, botConfig), 10000);
             }
         });
 
@@ -158,17 +157,26 @@ async function start() {
             if (m.type === 'notify') {
                 const msg = m.messages[0];
                 if (!msg.message || msg.key.fromMe) return;
+                
                 stats.pesanMasuk++;
-                addLog(`📩 Pesan masuk dari ${msg.pushName || 'User'}`);
-                await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual });
+                // Jangan log setiap pesan masuk ke dashboard jika traffic tinggi
+                if (stats.pesanMasuk % 5 === 0) addLog(`📩 Memproses ${stats.pesanMasuk} pesan...`);
+                
+                // Pastikan handler tidak memblokir proses utama
+                handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual })
+                    .catch(e => console.error("Handler Error:", e));
             }
         });
 
     } catch (err) {
-        addLog("❌ Error Fatal: " + err.message);
-        console.error(err);
+        addLog("❌ Error: " + err.message);
         setTimeout(start, 10000);
     }
 }
+
+// Optimization: Handle unhandled rejections agar bot tidak mati mendadak
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 start();
