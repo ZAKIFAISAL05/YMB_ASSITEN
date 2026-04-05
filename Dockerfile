@@ -9,10 +9,10 @@ WORKDIR /app
 # 2. Copy Manifest (Hanya package.json)
 COPY package*.json ./
 
-# 3. Update: Install Dependencies Dasar + MongoDB Adapter
-# Menambahkan mongoose dan baileys-mongodb agar koneksi database lancar
+# 3. Update: Install Dependencies Dasar + MongoDB Adapter + UUID
+# Menambahkan 'uuid' karena dibutuhkan oleh baileys-mongodb
 RUN npm install --no-audit --no-fund && \
-    npm install axios form-data mongoose baileys-mongodb --no-audit --no-fund && \
+    npm install axios form-data mongoose baileys-mongodb uuid --no-audit --no-fund && \
     npm cache clean --force
 
 # 4. Copy sisa kode
