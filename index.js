@@ -1,8 +1,7 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.0
- * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
- * Status Auth: MongoDB Atlas (Permanent + Fallback System)
+ * Versi: 1.2.1 (Stability Update)
+ * Status: MongoDB Atlas Fixed
  */
 
 const { 
@@ -14,8 +13,6 @@ const {
 
 const mongoose = require('mongoose'); 
 const mongoAuth = require('baileys-mongodb'); 
-
-// Pastikan fungsi auth dipanggil dengan benar
 const useMongoDBAuthState = mongoAuth.default || mongoAuth; 
 
 const pino = require("pino");
@@ -58,15 +55,14 @@ function loadConfig() {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
             Object.assign(botConfig, JSON.parse(data));
-            console.log("✅ Konfigurasi dimuat.");
         }
-    } catch (e) { console.error("❌ Gagal memuat config:", e.message); }
+    } catch (e) { console.error("❌ Config error:", e.message); }
 }
 loadConfig();
 
 const saveConfig = () => {
     try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2)); } 
-    catch (e) { console.error("❌ Gagal menyimpan config"); }
+    catch (e) { console.error("❌ Save error"); }
 };
 
 // --- WEB SERVER ---
@@ -74,18 +70,10 @@ const app = express();
 const port = process.env.PORT || 8080;
 let qrCodeData = "";
 let isConnected = false;
-let sock;
 let logs = [];
 let stats = { pesanMasuk: 0, totalLog: 0 };
 
 app.use('/files', express.static(PUBLIC_FILES_PATH));
-
-app.get("/tugas/:filenames", (req, res) => {
-    const filenames = req.params.filenames.split(','); 
-    const fileUrls = filenames.map(name => `${req.protocol}://${req.get('host')}/files/${name}`); 
-    res.setHeader('Content-Type', 'text/html');
-    res.send(renderMediaView(fileUrls));
-});
 
 const addLog = (msg) => {
     const time = new Date().toLocaleTimeString('id-ID');
@@ -93,16 +81,6 @@ const addLog = (msg) => {
     stats.totalLog++;
     if (logs.length > 50) logs.pop();
 };
-
-app.get("/toggle/:feature", (req, res) => {
-    const feat = req.params.feature;
-    if (botConfig.hasOwnProperty(feat)) {
-        botConfig[feat] = !botConfig[feat];
-        saveConfig();
-        addLog(`Sistem ${feat} diubah -> ${botConfig[feat] ? 'ON' : 'OFF'}`);
-    }
-    res.redirect("/");
-});
 
 app.get("/", (req, res) => {
     res.setHeader('Content-Type', 'text/html');
@@ -117,13 +95,12 @@ app.listen(port, "0.0.0.0", () => {
  * MAIN BOT LOGIC
  */
 async function start() {
+    const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority";
+
     try {
-        addLog("⏳ Menghubungkan ke MongoDB Atlas...");
-        
-        // SISTEM FALLBACK: Jika Env Variable kosong, pakai link manual ini
-        const uri = process.env.MONGODB_URI || "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority";
-        
-        await mongoose.connect(uri);
+        addLog("⏳ Menghubungkan ke MongoDB...");
+        // Konek manual dulu agar koneksi Mongoose tersedia
+        await mongoose.connect(MONGODB_URI);
         addLog("🗄️ Database Terhubung.");
     } catch (err) {
         addLog("❌ Database Error: " + err.message);
@@ -133,8 +110,13 @@ async function start() {
 
     const { version } = await fetchLatestBaileysVersion();
     
-    // Auth State MongoDB
-    const { state, saveCreds } = await useMongoDBAuthState(mongoose.connection, "sessions");
+    /**
+     * PERBAIKAN KRUSIAL:
+     * Kita ambil koleksi 'sessions' langsung dari database Mongoose yang sudah aktif.
+     * Ini menghindari error "uri must be a string" karena library tidak perlu konek ulang.
+     */
+    const collection = mongoose.connection.db.collection('sessions');
+    const { state, saveCreds } = await useMongoDBAuthState(collection);
 
     sock = makeWASocket({
         version,
@@ -154,20 +136,17 @@ async function start() {
 
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
         if (qr) {
             qrCodeData = await QRCode.toDataURL(qr);
-            addLog("🔄 QR Code baru tersedia di Dashboard.");
+            addLog("🔄 QR Code baru tersedia.");
         }
-        
         if (connection === "close") {
             isConnected = false;
-            const code = lastDisconnect?.error?.output?.statusCode;
-            if (code !== DisconnectReason.loggedOut) {
+            if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
                 addLog("🔴 Putus, menyambung ulang...");
                 setTimeout(start, 5000);
             } else {
-                addLog("⚠️ Logout terdeteksi. Silakan scan ulang.");
+                addLog("⚠️ Logout. Hapus data di MongoDB dan scan ulang.");
             }
         } else if (connection === "open") {
             isConnected = true; 
@@ -189,12 +168,14 @@ async function start() {
             if (!msg.message || msg.key.fromMe) return;
             stats.pesanMasuk++;
             addLog(`📩 Pesan dari: ${msg.pushName || 'User'}`);
-            await handleMessages(sock, m, botConfig, { 
-                getWeekDates, 
-                sendJadwalBesokManual 
-            });
+            await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual });
         }
     });
 }
+
+// Menangani error tak terduga agar bot tidak langsung mati
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 start();
