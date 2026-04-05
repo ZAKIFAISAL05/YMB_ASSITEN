@@ -152,7 +152,7 @@ app.listen(port, "0.0.0.0", () => {
  * CORE BOT FUNCTION
  */
 async function start() {
-    const MONGODB_URI = "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority&connectTimeoutMS=60000&socketTimeoutMS=60000";
+    const MONGODB_URI = "mongodb+srv://YMB_ASSITEN:ZAKI_DEVELOPER_BOT@cluster0.tukm6s3.mongodb.net/?appName=Cluster0";
 
     try {
         addLog("⏳ Menghubungkan MongoDB...");
