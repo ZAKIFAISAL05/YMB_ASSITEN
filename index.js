@@ -1,7 +1,8 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.9 (Stable Legacy Edition)
- * Driver: MongoDB 4.1 Optimized
+ * Versi: 1.2.0 (Original Structure - Stability Patch)
+ * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
+ * Status Auto-Cleaning: DISABLED (File Abadi)
  */
 
 const { 
@@ -20,7 +21,7 @@ const QRCode = require("qrcode");
 const path = require("path");
 const fs = require("fs");
 
-// --- IMPORT ASLI ---
+// --- IMPORT HANDLER & SCHEDULER ---
 const { handleMessages } = require('./handler'); 
 const { 
     initQuizScheduler, 
@@ -32,54 +33,129 @@ const {
     sendJadwalBesokManual 
 } = require('./scheduler'); 
 
+// --- IMPORT TKA REMINDER ---
 const { initTkaScheduler } = require('./tkaReminder'); 
+
+// --- IMPORT UI VIEWS ---
 const { renderDashboard } = require('./views/dashboard'); 
 const { renderMediaView } = require('./views/mediaView'); 
 
-// --- PATHS ---
+// --- KONFIGURASI PATH DINAMIS ---
 const VOLUME_PATH = '/app/auth_info';
+const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
-if (!fs.existsSync(VOLUME_PATH)) fs.mkdirSync(VOLUME_PATH, { recursive: true });
-if (!fs.existsSync(PUBLIC_FILES_PATH)) fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
+/**
+ * INISIALISASI DIREKTORI
+ */
+if (!fs.existsSync(VOLUME_PATH)) {
+    fs.mkdirSync(VOLUME_PATH, { recursive: true });
+}
+if (!fs.existsSync(PUBLIC_FILES_PATH)) {
+    fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
+}
 
-let botConfig = { quiz: true, jadwalBesok: true, smartFeedback: true, prMingguan: true, sahur: true, tkaReminder: true };
+// --- KONFIGURASI DEFAULT BOT ---
+let botConfig = { 
+    quiz: true, 
+    jadwalBesok: true, 
+    smartFeedback: true, 
+    prMingguan: true, 
+    sahur: true,
+    tkaReminder: true 
+};
 
-// --- SERVER ---
+/**
+ * FUNGSI LOAD CONFIG
+ */
+function loadConfig() {
+    try {
+        if (fs.existsSync(CONFIG_PATH)) {
+            const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
+            const parsed = JSON.parse(data);
+            Object.assign(botConfig, parsed);
+            console.log("✅ Config Berhasil Dimuat dari Volume");
+        } else {
+            fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
+            console.log("ℹ️ Membuat file konfigurasi baru...");
+        }
+    } catch (e) { 
+        console.error("❌ Gagal memuat config:", e.message); 
+    }
+}
+loadConfig();
+
+/**
+ * FUNGSI SAVE CONFIG
+ */
+const saveConfig = () => {
+    try {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
+    } catch (e) { 
+        console.error("❌ Gagal menyimpan config"); 
+    }
+};
+
+// --- INISIALISASI EXPRESS SERVER ---
 const app = express();
 const port = process.env.PORT || 8080;
-let qrCodeData = "", isConnected = false, sock, logs = [], stats = { pesanMasuk: 0, totalLog: 0 };
+let qrCodeData = "";
+let isConnected = false;
+let sock;
+let logs = [];
+let stats = { pesanMasuk: 0, totalLog: 0 };
 
 app.use('/files', express.static(PUBLIC_FILES_PATH));
 
 app.get("/tugas/:filenames", (req, res) => {
     const filenames = req.params.filenames.split(','); 
-    const fileUrls = filenames.map(name => `${req.protocol}://${req.get('host')}/files/${name}`); 
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const fileUrls = filenames.map(name => `${protocol}://${host}/files/${name}`); 
     res.setHeader('Content-Type', 'text/html');
     res.send(renderMediaView(fileUrls));
 });
 
+/**
+ * LOGGING SYSTEM (Optimized)
+ */
 const addLog = (msg) => {
     const time = new Date().toLocaleTimeString('id-ID');
-    logs.unshift(`[${time}] ${msg}`);
-    if (logs.length > 20) logs.pop();
+    logs.unshift(`<span style="color: #00ff73;">[${time}]</span> <span style="color: #ffffff !important;">${msg}</span>`);
+    stats.totalLog++;
+    if (logs.length > 25) logs.pop(); 
 };
+
+/**
+ * ENDPOINT KONTROL FITUR
+ */
+app.get("/toggle/:feature", (req, res) => {
+    const feat = req.params.feature;
+    if (botConfig.hasOwnProperty(feat)) {
+        botConfig[feat] = !botConfig[feat];
+        saveConfig();
+        addLog(`Sistem ${feat} diubah -> ${botConfig[feat] ? 'ON' : 'OFF'}`);
+    }
+    res.redirect("/");
+});
 
 app.get("/", (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(renderDashboard(isConnected, qrCodeData, botConfig, stats, logs, port));
 });
 
-app.listen(port, "0.0.0.0", () => console.log(`✅ Dashboard Online`));
+app.listen(port, "0.0.0.0", () => {
+    console.log(`✅ Web Dashboard aktif di port ${port}`);
+});
 
 /**
- * START FUNCTION (Logika Index Lama)
+ * CORE BOT FUNCTION
  */
 async function start() {
-    // Tambahkan opsi keepAlive untuk MongoDB 4.1
     const MONGODB_URI = "mongodb+srv://narutoacmilan1_db_user:SyamBot123@cluster0.8h4rcml.mongodb.net/syteam?retryWrites=true&w=majority&connectTimeoutMS=60000&socketTimeoutMS=60000";
 
     try {
+        addLog("⏳ Menghubungkan MongoDB...");
         const { state, saveCreds } = await useMongoDBAuthState(MONGODB_URI);
         const { version } = await fetchLatestBaileysVersion();
 
@@ -92,7 +168,7 @@ async function start() {
             printQRInTerminal: false,
             logger: pino({ level: "silent" }), 
             browser: ["Syteam-Bot", "Chrome", "1.0.0"],
-            syncFullHistory: false,
+            syncFullHistory: false, 
             connectTimeoutMs: 60000
         });
 
@@ -104,17 +180,19 @@ async function start() {
             
             if (connection === "close") {
                 isConnected = false;
-                const code = lastDisconnect?.error?.output?.statusCode;
-                if (code !== DisconnectReason.loggedOut) {
-                    addLog("🔴 Putus, nyambung lagi dalam 5 detik...");
-                    setTimeout(start, 5000);
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                if (shouldReconnect) {
+                    addLog("🔴 Putus, menyambung kembali dalam 7 detik...");
+                    setTimeout(start, 7000); 
+                } else {
+                    addLog("⚠️ Logout. Silakan scan ulang.");
                 }
             } else if (connection === "open") {
                 isConnected = true; 
                 qrCodeData = ""; 
                 addLog("🟢 Bot Berhasil Terhubung!");
                 
-                // Eksekusi Scheduler Original
+                // Eksekusi Scheduler sesuai urutan lama
                 initQuizScheduler(sock, botConfig);
                 initJadwalBesokScheduler(sock, botConfig);
                 initSmartFeedbackScheduler(sock, botConfig);
@@ -128,16 +206,22 @@ async function start() {
             if (m.type === 'notify') {
                 const msg = m.messages[0];
                 if (!msg.message || msg.key.fromMe) return;
+                
                 stats.pesanMasuk++;
-                await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual }).catch(() => {});
+                await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual })
+                      .catch(e => console.log("Handler Error: ", e.message));
             }
         });
 
     } catch (err) {
-        console.error("Fatal Error:", err);
-        setTimeout(start, 10000);
+        addLog("❌ Error Fatal: " + err.message);
+        setTimeout(start, 15000);
     }
 }
 
 start();
-    
+
+/**
+ * Akhir dari file index.js.
+ * Struktur baris tetap dipertahankan.
+ */
