@@ -11,8 +11,8 @@ const {
     fetchLatestBaileysVersion, 
     makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
-const { useMongoDBAuthState } = require('baileys-mongodb'); // Tambahan untuk MongoDB
-const mongoose = require('mongoose'); // Tambahan untuk MongoDB
+const useMongoDBAuthState = require('baileys-mongodb'); // PERBAIKAN: Hapus kurung kurawal
+const mongoose = require('mongoose'); 
 const pino = require("pino");
 const express = require("express");
 const QRCode = require("qrcode");
@@ -146,19 +146,18 @@ async function start() {
         // Koneksi ke MongoDB Atlas dengan proteksi error
         addLog("⏳ Mencoba menghubungkan ke MongoDB Atlas...");
         await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 20000, // Timeout 20 detik
+            serverSelectionTimeoutMS: 20000, 
         });
         addLog("🗄️ Terhubung ke MongoDB Atlas.");
     } catch (err) {
         addLog("❌ Gagal konek MongoDB: " + err.message);
         console.error("MongoDB Connection Error:", err);
-        // Jika gagal, coba lagi dalam 10 detik
         setTimeout(start, 10000);
         return;
     }
 
     const { version } = await fetchLatestBaileysVersion();
-    // Menggunakan MongoDB untuk menyimpan Auth State
+    // PERBAIKAN: Menggunakan fungsi yang benar dari baileys-mongodb
     const { state, saveCreds } = await useMongoDBAuthState(mongoose.connection.collection('sessions'));
 
     sock = makeWASocket({
