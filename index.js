@@ -11,8 +11,12 @@ const {
     fetchLatestBaileysVersion, 
     makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
-const useMongoDBAuthState = require('baileys-mongodb'); // PERBAIKAN: Hapus kurung kurawal
+
+// --- PERBAIKAN DI SINI: Tanpa kurung kurawal ---
+const useMongoDBAuthState = require('baileys-mongodb'); 
 const mongoose = require('mongoose'); 
+// ----------------------------------------------
+
 const pino = require("pino");
 const express = require("express");
 const QRCode = require("qrcode");
@@ -43,9 +47,6 @@ const VOLUME_PATH = '/app/auth_info';
 const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
-/**
- * INISIALISASI DIREKTORI
- */
 if (!fs.existsSync(VOLUME_PATH)) {
     fs.mkdirSync(VOLUME_PATH, { recursive: true });
 }
@@ -53,7 +54,6 @@ if (!fs.existsSync(PUBLIC_FILES_PATH)) {
     fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
 }
 
-// --- KONFIGURASI DEFAULT BOT ---
 let botConfig = { 
     quiz: true, 
     jadwalBesok: true, 
@@ -63,9 +63,6 @@ let botConfig = {
     tkaReminder: true 
 };
 
-/**
- * FUNGSI LOAD CONFIG
- */
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
@@ -91,7 +88,6 @@ const saveConfig = () => {
     }
 };
 
-// --- INISIALISASI EXPRESS SERVER ---
 const app = express();
 const port = process.env.PORT || 8080;
 let qrCodeData = "";
@@ -138,12 +134,8 @@ app.listen(port, "0.0.0.0", () => {
     console.log(`✅ Web Dashboard aktif di port ${port}`);
 });
 
-/**
- * CORE BOT FUNCTION
- */
 async function start() {
     try {
-        // Koneksi ke MongoDB Atlas dengan proteksi error
         addLog("⏳ Mencoba menghubungkan ke MongoDB Atlas...");
         await mongoose.connect(process.env.MONGODB_URI, {
             serverSelectionTimeoutMS: 20000, 
@@ -157,8 +149,10 @@ async function start() {
     }
 
     const { version } = await fetchLatestBaileysVersion();
-    // PERBAIKAN: Menggunakan fungsi yang benar dari baileys-mongodb
-    const { state, saveCreds } = await useMongoDBAuthState(mongoose.connection.collection('sessions'));
+    
+    // Inisialisasi Auth State dari MongoDB
+    const collection = mongoose.connection.collection('sessions');
+    const { state, saveCreds } = await useMongoDBAuthState(collection);
 
     sock = makeWASocket({
         version,
@@ -226,7 +220,3 @@ async function start() {
 }
 
 start();
-
-/**
- * INFO: Akhir dari file index.js.
- */
