@@ -167,9 +167,11 @@ async function start() {
             },
             printQRInTerminal: false,
             logger: pino({ level: "silent" }), 
-            browser: ["Syteam-Bot", "Chrome", "1.0.0"],
+            browser: ["Ubuntu", "Chrome", "20.0.0"],
             syncFullHistory: false, 
-            connectTimeoutMs: 60000
+            connectTimeoutMs: 120000,
+            defaultQueryTimeoutMs: 0,
+            keepAliveIntervalMs: 10000
         });
 
         sock.ev.on("creds.update", saveCreds);
