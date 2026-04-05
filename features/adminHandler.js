@@ -1,4 +1,3 @@
-const db = require('../data');
 const { delay, downloadMediaMessage } = require("@whiskeysockets/baileys"); 
 const fs = require('fs');
 const path = require('path');
@@ -20,10 +19,13 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
         return listMapel.find(m => input.toLowerCase().includes(m.toLowerCase().substring(0, 3)));
     };
 
-    const getProcessedTask = (dayKey, input) => {
+    const getProcessedTask = async (dayKey, input) => {
         const dayMap = { 'senin': 0, 'selasa': 1, 'rabu': 2, 'kamis': 3, 'jumat': 4 };
         const dayLabels = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
-        let allData = db.getAll() || {};
+        
+        // UPDATE: Ambil data dari MongoDB via Baileys-MongoDB
+        let allData = await sock.executeGet('pr_database') || {};
+        
         let currentData = String(allData[dayKey] || ""); 
         if (currentData.includes("Belum ada tugas")) currentData = "";
         let existingEntries = currentData.split(/\n(?=•)/g).filter(e => e.trim() !== "");
@@ -78,26 +80,37 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             try {
                 await sock.sendMessage(sender, { text: "⏳ *Sedang menyelaraskan jadwal dengan constants.js...*" });
                 const dayKeys = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
-                const currentDb = db.getAll() || {};
+                
+                // UPDATE: Ambil dari MongoDB
+                let currentDb = await sock.executeGet('pr_database') || {};
+                
                 const backupPR = [];
-                dayKeys.forEach(h => {
-                    if (currentDb[h] && !currentDb[h].includes("Belum ada tugas")) backupPR.push(...currentDb[h].split(/\n(?=•)/g));
-                    db.updateTugas(h, ""); 
-                });
+                for (const h of dayKeys) {
+                    if (currentDb[h] && !currentDb[h].includes("Belum ada tugas")) {
+                        backupPR.push(...currentDb[h].split(/\n(?=•)/g));
+                    }
+                    currentDb[h] = ""; // Reset data di objek lokal
+                }
+
                 for (let i = 1; i <= 5; i++) {
                     const hKey = dayKeys[i-1];
                     const cleanMapels = JADWAL_PELAJARAN[i].toLowerCase().split('\n').map(l => l.replace(/[^\w\s]/gi, '').trim());
                     STRUKTUR_JADWAL[hKey] = cleanMapels;
                 }
+
                 backupPR.forEach(entry => {
                     for (const h of dayKeys) {
                         if (STRUKTUR_JADWAL[h].some(m => entry.toLowerCase().includes(m))) {
-                            let old = db.getAll()[h] || "";
-                            db.updateTugas(h, old ? old + "\n\n" + entry.trim() : entry.trim());
+                            let old = currentDb[h] || "";
+                            currentDb[h] = old ? old + "\n\n" + entry.trim() : entry.trim();
                             break;
                         }
                     }
                 });
+
+                // UPDATE: Simpan hasil sinkronisasi ke MongoDB
+                await sock.executeUpdate('pr_database', currentDb);
+                
                 await sock.sendMessage(sender, { text: "✅ *SISTEM REFRESHED!*\nJadwal dan PR telah disinkronkan." });
             } catch (e) { await sock.sendMessage(sender, { text: "❌ Error: " + e.message }); }
             break;
@@ -127,7 +140,8 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             }
 
             const dayKey = daysUpdate[dIdx];
-            let res = getProcessedTask(dayKey, body + mediaSection);
+            // UPDATE: Menambahkan await karena getProcessedTask sekarang async (koneksi DB)
+            let res = await getProcessedTask(dayKey, body + mediaSection);
 
             if (res === null) {
                 const saran = getSuggestion(dayKey, body);
@@ -136,7 +150,11 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                 return await sock.sendMessage(sender, { text: errorMsg });
             }
 
-            db.updateTugas(dayKey, res);
+            // UPDATE: Simpan ke MongoDB
+            let fullDataUpdate = await sock.executeGet('pr_database') || {};
+            fullDataUpdate[dayKey] = res;
+            await sock.executeUpdate('pr_database', fullDataUpdate);
+
             if (cmd === '!update') await sendToGroupSafe({ text: `📌 *Update PR Baru* 📢\n\n*\`📅 ${dayKey.toUpperCase()}\`* ➝ ${dates[dIdx]}\n\n${res}` });
             await sock.sendMessage(sender, { text: `✅ *Berhasil Update data ${dayKey}!*` });
             break;
@@ -167,28 +185,32 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
 
         case '!hapus':
-            // Kita gunakan argumen dari body agar fleksibel dengan huruf kapital
             const rawHapusArgs = body.split(' ');
-            const targetHapus = rawHapusArgs[1]?.toLowerCase(); // Ambil hari (index 1)
-            const targetMapel = rawHapusArgs.slice(2).join(' ').toLowerCase(); // Ambil mapel (sisanya)
+            const targetHapus = rawHapusArgs[1]?.toLowerCase();
+            const targetMapel = rawHapusArgs.slice(2).join(' ').toLowerCase();
             
             const daftarHari = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
 
             if (daftarHari.includes(targetHapus)) {
+                // UPDATE: Ambil data dari MongoDB
+                let fullDataHapus = await sock.executeGet('pr_database') || {};
+
                 if (targetMapel === 'semua') {
-                    db.updateTugas(targetHapus, "");
+                    fullDataHapus[targetHapus] = "";
+                    await sock.executeUpdate('pr_database', fullDataHapus);
                     await sock.sendMessage(sender, { text: `✅ Semua data hari *${targetHapus.toUpperCase()}* dihapus!` });
                 } else if (targetMapel) {
                     const findM = STRUKTUR_JADWAL[targetHapus].find(m => new RegExp(`\\b${targetMapel}\\b`, 'i').test(m));
                     if (!findM) return await sock.sendMessage(sender, { text: `❌ *MAPEL TIDAK DITEMUKAN*` });
                     
                     const emojiMapel = MAPEL_CONFIG[findM];
-                    let currentData = db.getAll()[targetHapus] || "";
+                    let currentData = fullDataHapus[targetHapus] || "";
                     
                     let entries = currentData.split(/\n\n(?=•)/g);
                     let filtered = entries.filter(e => !e.includes(emojiMapel));
                     
-                    db.updateTugas(targetHapus, filtered.join('\n\n').trim());
+                    fullDataHapus[targetHapus] = filtered.join('\n\n').trim();
+                    await sock.executeUpdate('pr_database', fullDataHapus);
                     await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}*!` });
                 } else {
                     await sock.sendMessage(sender, { text: "⚠️ *Mapel belum diisi!*" });
@@ -199,14 +221,20 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
 
         case '!deadline':
-            db.updateTugas('deadline', body.slice(10).trim());
+            // UPDATE: Simpan deadline ke MongoDB
+            let fullDataDL = await sock.executeGet('pr_database') || {};
+            fullDataDL['deadline'] = body.slice(10).trim();
+            await sock.executeUpdate('pr_database', fullDataDL);
             await sock.sendMessage(sender, { text: `✅ Daftar tugas belum dikumpul diperbarui!` });
             break;
 
         case '!cek_db':
-            const allDataDb = db.getAll() || {};
+            // UPDATE: Ambil data dari MongoDB
+            const allDataDb = await sock.executeGet('pr_database') || {};
             let teksDb = `📂 *KONTROL DATABASE PR*\n${SEP}\n\n`;
-            ['senin', 'selasa', 'rabu', 'kamis', 'jumat'].forEach(hari => { teksDb += `📌 *${hari.toUpperCase()}*:\n${allDataDb[hari] || "_Kosong_"}\n\n`; });
+            ['senin', 'selasa', 'rabu', 'kamis', 'jumat'].forEach(hari => { 
+                teksDb += `📌 *${hari.toUpperCase()}*:\n${allDataDb[hari] || "_Kosong_"}\n\n`; 
+            });
             await sock.sendMessage(sender, { text: teksDb + SEP });
             break;
 
@@ -219,4 +247,4 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
 }
 
 module.exports = { handleAdminCommands };
-        
+                            
