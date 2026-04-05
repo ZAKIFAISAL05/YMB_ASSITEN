@@ -1,4 +1,4 @@
-Full const { QUIZ_BANK } = require('./quiz'); 
+Const { QUIZ_BANK } = require('./quiz'); 
 const { JADWAL_PELAJARAN: JADWAL_STATIS, MOTIVASI_SEKOLAH } = require('./constants');
 const db = require('./data');
 const fs = require('fs'); 
@@ -337,4 +337,4 @@ module.exports = {
     initSahurScheduler,
     getWeekDates,
     sendJadwalBesokManual
-}; 
+};
