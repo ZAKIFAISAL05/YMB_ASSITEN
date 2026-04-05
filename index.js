@@ -2,6 +2,7 @@
  * SYTEAM-BOT MAIN SERVER
  * Versi: 1.2.0
  * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
+ * Status Auth: MongoDB Atlas (Permanent)
  */
 
 const { 
@@ -11,12 +12,11 @@ const {
     makeCacheableSignalKeyStore 
 } = require("@whiskeysockets/baileys");
 
-// --- PERBAIKAN IMPORT MONGODB ---
 const mongoose = require('mongoose'); 
 const mongoAuth = require('baileys-mongodb'); 
-// Ambil fungsi defaultnya secara manual untuk menghindari TypeError
+
+// Pastikan fungsi auth dipanggil dengan benar (mengatasi TypeError)
 const useMongoDBAuthState = mongoAuth.default || mongoAuth; 
-// --------------------------------
 
 const pino = require("pino");
 const express = require("express");
@@ -36,10 +36,7 @@ const {
     sendJadwalBesokManual 
 } = require('./scheduler'); 
 
-// --- IMPORT TKA REMINDER ---
 const { initTkaScheduler } = require('./tkaReminder'); 
-
-// --- IMPORT UI VIEWS ---
 const { renderDashboard } = require('./views/dashboard'); 
 const { renderMediaView } = require('./views/mediaView'); 
 
@@ -48,6 +45,7 @@ const VOLUME_PATH = '/app/auth_info';
 const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
+// Inisialisasi folder jika belum ada
 if (!fs.existsSync(VOLUME_PATH)) fs.mkdirSync(VOLUME_PATH, { recursive: true });
 if (!fs.existsSync(PUBLIC_FILES_PATH)) fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
 
@@ -56,11 +54,15 @@ let botConfig = {
     prMingguan: true, sahur: true, tkaReminder: true 
 };
 
+/**
+ * FUNGSI LOAD & SAVE CONFIG
+ */
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
             Object.assign(botConfig, JSON.parse(data));
+            console.log("✅ Konfigurasi dimuat.");
         }
     } catch (e) { console.error("❌ Gagal memuat config:", e.message); }
 }
@@ -71,6 +73,7 @@ const saveConfig = () => {
     catch (e) { console.error("❌ Gagal menyimpan config"); }
 };
 
+// --- SETTING WEB SERVER (EXPRESS) ---
 const app = express();
 const port = process.env.PORT || 8080;
 let qrCodeData = "";
@@ -81,6 +84,7 @@ let stats = { pesanMasuk: 0, totalLog: 0 };
 
 app.use('/files', express.static(PUBLIC_FILES_PATH));
 
+// Route Media Viewer
 app.get("/tugas/:filenames", (req, res) => {
     const filenames = req.params.filenames.split(','); 
     const fileUrls = filenames.map(name => `${req.protocol}://${req.get('host')}/files/${name}`); 
@@ -114,23 +118,26 @@ app.listen(port, "0.0.0.0", () => {
     console.log(`✅ Web Dashboard aktif di port ${port}`);
 });
 
+/**
+ * MAIN BOT LOGIC
+ */
 async function start() {
     try {
-        addLog("⏳ Mencoba menghubungkan ke MongoDB Atlas...");
-        // Pastikan variabel MONGODB_URI di dashboard hosting sudah benar
+        addLog("⏳ Menghubungkan ke MongoDB Atlas...");
+        // MONGODB_URI harus di-set di Environment Variables hosting
         await mongoose.connect(process.env.MONGODB_URI);
-        addLog("🗄️ Terhubung ke MongoDB Atlas.");
+        addLog("🗄️ Database Terhubung.");
     } catch (err) {
-        addLog("❌ Gagal konek MongoDB: " + err.message);
+        addLog("❌ Database Error: " + err.message);
         setTimeout(start, 10000);
         return;
     }
 
     const { version } = await fetchLatestBaileysVersion();
     
-    // Mengambil koleksi untuk sesi
-    const collection = mongoose.connection.collection('sessions');
-    const { state, saveCreds } = await useMongoDBAuthState(collection);
+    // Inisialisasi Auth State (Penyimpanan Login)
+    // PERBAIKAN: Mengirim koneksi dan string nama koleksi
+    const { state, saveCreds } = await useMongoDBAuthState(mongoose.connection, "sessions");
 
     sock = makeWASocket({
         version,
@@ -150,23 +157,27 @@ async function start() {
 
     sock.ev.on("connection.update", async (update) => {
         const { connection, lastDisconnect, qr } = update;
+        
         if (qr) {
             qrCodeData = await QRCode.toDataURL(qr);
-            addLog("🔄 QR Code baru dibuat, silakan scan di Dashboard.");
+            addLog("🔄 QR Code baru tersedia di Dashboard.");
         }
+        
         if (connection === "close") {
             isConnected = false;
-            if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-                addLog("🔴 Koneksi terputus, mencoba menyambung ulang...");
+            const code = lastDisconnect?.error?.output?.statusCode;
+            if (code !== DisconnectReason.loggedOut) {
+                addLog("🔴 Putus, menyambung ulang...");
                 setTimeout(start, 5000);
             } else {
-                addLog("⚠️ Bot Logout. Silakan hapus data di MongoDB dan scan ulang.");
+                addLog("⚠️ Logout terdeteksi. Silakan scan ulang.");
             }
         } else if (connection === "open") {
             isConnected = true; 
             qrCodeData = ""; 
-            addLog("🟢 Bot Berhasil Terhubung ke WhatsApp!");
+            addLog("🟢 Bot Aktif & Terhubung!");
             
+            // Jalankan Scheduler
             initQuizScheduler(sock, botConfig); 
             initJadwalBesokScheduler(sock, botConfig);
             initSmartFeedbackScheduler(sock, botConfig);
@@ -180,9 +191,15 @@ async function start() {
         if (m.type === 'notify') {
             const msg = m.messages[0];
             if (!msg.message || msg.key.fromMe) return;
+            
             stats.pesanMasuk++;
-            addLog(`📩 Pesan masuk dari: ${msg.pushName || 'User'}`);
-            await handleMessages(sock, m, botConfig, { getWeekDates, sendJadwalBesokManual });
+            addLog(`📩 Pesan dari: ${msg.pushName || 'User'}`);
+            
+            // Kirim ke Handler utama
+            await handleMessages(sock, m, botConfig, { 
+                getWeekDates, 
+                sendJadwalBesokManual 
+            });
         }
     });
 }
