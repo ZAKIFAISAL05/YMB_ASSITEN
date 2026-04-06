@@ -1,4 +1,4 @@
-const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
+Const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
 
 // 🔗 LINK FOLDER KHUSUS KISI-KISI
 // Silakan ganti link di bawah ini dengan link Google Drive kamu yang sebenarnya
@@ -26,9 +26,9 @@ async function initTkaScheduler(sock, botConfig) {
 
         // -----------------------------------------------------------
         // 🔒 SISTEM MATI OTOMATIS (AUTO-KILL)
-        // Mati pas tanggal 7 April jam 12 siang setelah ujian selesai
+        // Mati pas tanggal 7 April jam 16:00 sore setelah semua selesai
         // -----------------------------------------------------------
-        if (bulan === 4 && tanggal >= 7 && jam >= 12) {
+        if (bulan === 4 && tanggal >= 7 && jam >= 16) {
             console.log("🛑 Ujian TKA Selesai. Fitur tkaReminder otomatis dimatikan!");
             clearInterval(tkaInterval); 
             return;
@@ -103,6 +103,42 @@ async function initTkaScheduler(sock, botConfig) {
                 await sock.sendMessage(ID_GRUP_TUJUAN, { text: teksSemangat });
                 lastSentDate = tglID;
             } catch (err) { console.error("Error Pagi TKA:", err); }
+        }
+
+        // -----------------------------------------------------------
+        // 4. KHUSUS TANGGAL 6 APRIL SORE (Kirim Jam 15:00 WIB)
+        // -----------------------------------------------------------
+        if (bulan === 4 && tanggal === 6 && jam === 15 && menit === 0 && lastSentDate !== tglID) {
+            try {
+                const pesanBIndo = `📚 *REMINDER BELAJAR BAHASA INDONESIA* 📚\n\nYuk teman-teman, luangkan waktu sore ini buat belajar Bahasa Indonesia! Target kita nilai Bahasa Indonesia harus lebih tinggi untuk mendongkrak nilai MTK yang kemarin dirasa kecil atau sulit. Kita maksimalkan di sini ya, semangat belajarnya! 🔥🎯`;
+                
+                await sock.sendMessage(ID_GRUP_TUJUAN, { text: pesanBIndo });
+                lastSentDate = tglID;
+            } catch (err) { console.error("Error Pengingat B.Indo:", err); }
+        }
+
+        // -----------------------------------------------------------
+        // 5. KHUSUS TANGGAL 7 APRIL PAGI (Kirim Jam 05:50 WIB)
+        // -----------------------------------------------------------
+        if (bulan === 4 && tanggal === 7 && jam === 5 && menit === 50 && lastSentDate !== tglID) {
+            try {
+                const pesanPagiTerakhir = `☀️ *SEMANGAT HARI TERAKHIR TKA!* ☀️\n\nSelamat pagi pejuang! Tarik napas dalam-dalam, hari ini adalah medan perang terakhir kita di TKA. Yuk keluarkan semua kemampuan terbaik kita untuk melewati ujian pamungkas ini. Sedikit lagi tuntas, ayo semangat sampai akhir! ✊🔥`;
+                
+                await sock.sendMessage(ID_GRUP_TUJUAN, { text: pesanPagiTerakhir });
+                lastSentDate = tglID;
+            } catch (err) { console.error("Error Pagi Terakhir TKA:", err); }
+        }
+
+        // -----------------------------------------------------------
+        // 6. KHUSUS TANGGAL 7 APRIL SIANG (Kirim Jam 11:00 WIB)
+        // -----------------------------------------------------------
+        if (bulan === 4 && tanggal === 7 && jam === 11 && menit === 0 && lastSentDate !== tglID) {
+            try {
+                const pesanSelesaiTka = `🎉 *ALHAMDULILLAH, SELESAI UJIAN!* 🎉\n━━━━━━━━━━━━━━━━━━━━\n\nSelamat kawan-kawan! Kita semua sudah berhasil melewati rangkaian Ujian TKA ini dengan tangguh. \n\nSoal nilai atau hasil akhir gak usah terlalu dipikirkan dulu sekarang. Walaupun tadi mungkin ada soal yang tidak dimengerti atau dirasa sulit, yang terpenting kita sudah berusaha maksimal. Tetap semangat dan mari kita rayakan perjuangan hebat kita ini! 🥳🙌\n\n━━━━━━━━━━━━━━━━━━━━\n_Istirahat yang nyenyak, kalian luar biasa!_ ✨`;
+                
+                await sock.sendMessage(ID_GRUP_TUJUAN, { text: pesanSelesaiTka });
+                lastSentDate = tglID;
+            } catch (err) { console.error("Error Selesai TKA:", err); }
         }
 
     }, 35000); 
