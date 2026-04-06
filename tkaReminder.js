@@ -1,4 +1,4 @@
-Const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
+const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
 
 // 🔗 LINK FOLDER KHUSUS KISI-KISI
 // Silakan ganti link di bawah ini dengan link Google Drive kamu yang sebenarnya
