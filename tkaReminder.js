@@ -1,4 +1,4 @@
-const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
+Const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
 
 // 🔗 LINK FOLDER KHUSUS KISI-KISI
 // Silakan ganti link di bawah ini dengan link Google Drive kamu yang sebenarnya
@@ -26,9 +26,9 @@ async function initTkaScheduler(sock, botConfig) {
 
         // -----------------------------------------------------------
         // 🔒 SISTEM MATI OTOMATIS (AUTO-KILL)
-        // Mati pas tanggal 7 April jam 16:00 sore setelah semua selesai
+        // Mati pas tanggal 7 April jam 12 siang setelah ujian selesai
         // -----------------------------------------------------------
-        if (bulan === 4 && tanggal >= 7 && jam >= 16) {
+        if (bulan === 4 && tanggal >= 7 && jam >= 12) {
             console.log("🛑 Ujian TKA Selesai. Fitur tkaReminder otomatis dimatikan!");
             clearInterval(tkaInterval); 
             return;
@@ -106,7 +106,7 @@ async function initTkaScheduler(sock, botConfig) {
         }
 
         // -----------------------------------------------------------
-        // 4. KHUSUS TANGGAL 6 APRIL SORE (Kirim Jam 15:00 WIB)
+        // 4. PENAMBAHAN: TANGGAL 6 APRIL SORE (Kirim Jam 15:00 WIB)
         // -----------------------------------------------------------
         if (bulan === 4 && tanggal === 6 && jam === 15 && menit === 0 && lastSentDate !== tglID) {
             try {
@@ -118,7 +118,7 @@ async function initTkaScheduler(sock, botConfig) {
         }
 
         // -----------------------------------------------------------
-        // 5. KHUSUS TANGGAL 7 APRIL PAGI (Kirim Jam 05:50 WIB)
+        // 5. PENAMBAHAN: TANGGAL 7 APRIL PAGI (Kirim Jam 05:50 WIB)
         // -----------------------------------------------------------
         if (bulan === 4 && tanggal === 7 && jam === 5 && menit === 50 && lastSentDate !== tglID) {
             try {
@@ -130,7 +130,7 @@ async function initTkaScheduler(sock, botConfig) {
         }
 
         // -----------------------------------------------------------
-        // 6. KHUSUS TANGGAL 7 APRIL SIANG (Kirim Jam 11:00 WIB)
+        // 6. PENAMBAHAN: TANGGAL 7 APRIL SIANG (Kirim Jam 11:00 WIB)
         // -----------------------------------------------------------
         if (bulan === 4 && tanggal === 7 && jam === 11 && menit === 0 && lastSentDate !== tglID) {
             try {
