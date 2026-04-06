@@ -9,7 +9,7 @@ function getWIBDate() {
 }
 
 // --- FUNGSI UTAMA PENGINGAT TKA ---
-async function initTkaScheduler(sock, botConfig) {
+function initTkaScheduler(sock, botConfig) {
     console.log("✅ Scheduler Pengingat Ujian TKA Aktif (File Terpisah)");
     let lastSentDate = ""; 
 
