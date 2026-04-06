@@ -5,9 +5,6 @@
  * Status Auto-Cleaning: DISABLED (File Abadi)
  */
 
-// --- MODUL DIKOSONGKAN DULU KARENA AKAN DI-IMPORT DINAMIS DI DALAM START() ---
-let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers;
-
 const pino = require("pino");
 const express = require("express");
 const QRCode = require("qrcode");
@@ -134,14 +131,16 @@ app.listen(port, "0.0.0.0", () => {
  * CORE BOT FUNCTION
  */
 async function start() {
-    // --- LOAD BAILEYS SECARA DINAMIS DI SINI AGAR TIDAK TERJADI ERR_REQUIRE_ASYNC_MODULE ---
-    const baileys = await import("@whiskeysockets/baileys");
-    makeWASocket = baileys.default;
-    useMultiFileAuthState = baileys.useMultiFileAuthState;
-    DisconnectReason = baileys.DisconnectReason;
-    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
-    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
-    Browsers = baileys.Browsers;
+    // --- PERBAIKAN IMPORT DINAMIS BAILEYS ---
+    // Menggunakan destrukturisasi langsung dari hasil `await import` agar variabelnya terbaca dengan benar
+    const { 
+        default: makeWASocket, 
+        useMultiFileAuthState, 
+        DisconnectReason, 
+        fetchLatestBaileysVersion, 
+        makeCacheableSignalKeyStore, 
+        Browsers 
+    } = await import("@whiskeysockets/baileys");
 
     const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(VOLUME_PATH);
@@ -152,12 +151,11 @@ async function start() {
             creds: state.creds, 
             keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
         },
-        printQRInTerminal: true, // Diaktifkan di terminal agar lebih mudah didebug
+        printQRInTerminal: true, 
         logger: pino({ level: "silent" }),
-        // PERBAIKAN: Menggunakan identitas browser Desktop yang lebih stabil
         browser: Browsers.macOS('Desktop'),
         syncFullHistory: false,
-        qrTimeout: 60000, // Menambah durasi masa aktif QR Code menjadi 1 menit
+        qrTimeout: 60000, 
     });
 
     sock.ev.on("creds.update", saveCreds);
@@ -166,7 +164,6 @@ async function start() {
         const { connection, lastDisconnect, qr } = update;
         
         if (qr) {
-            // PERBAIKAN: Menambah skala dan margin agar QR lebih jelas dan mudah dibaca kamera
             qrCodeData = await QRCode.toDataURL(qr, { scale: 10, margin: 3 });
             addLog("🔄 QR Code diperbarui, silakan scan melalui dashboard.");
         }
