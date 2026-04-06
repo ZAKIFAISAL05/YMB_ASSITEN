@@ -5,14 +5,9 @@
  * Status Auto-Cleaning: DISABLED (File Abadi)
  */
 
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    fetchLatestBaileysVersion, 
-    makeCacheableSignalKeyStore,
-    Browsers // Ditambahkan untuk stabilitas browser
-} = require("@whiskeysockets/baileys");
+// --- MODUL DIKOSONGKAN DULU KARENA AKAN DI-IMPORT DINAMIS DI DALAM START() ---
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, Browsers;
+
 const pino = require("pino");
 const express = require("express");
 const QRCode = require("qrcode");
@@ -139,6 +134,15 @@ app.listen(port, "0.0.0.0", () => {
  * CORE BOT FUNCTION
  */
 async function start() {
+    // --- LOAD BAILEYS SECARA DINAMIS DI SINI AGAR TIDAK TERJADI ERR_REQUIRE_ASYNC_MODULE ---
+    const baileys = await import("@whiskeysockets/baileys");
+    makeWASocket = baileys.default;
+    useMultiFileAuthState = baileys.useMultiFileAuthState;
+    DisconnectReason = baileys.DisconnectReason;
+    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
+    Browsers = baileys.Browsers;
+
     const { version } = await fetchLatestBaileysVersion();
     const { state, saveCreds } = await useMultiFileAuthState(VOLUME_PATH);
 
