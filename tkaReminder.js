@@ -21,7 +21,7 @@ function initTkaScheduler(sock, botConfig) {
         siangH7: ""
     };
 
-    const tkaInterval = setInterval(async () => {
+    setInterval(async () => {
         if (!botConfig || botConfig.quiz === false) return; 
 
         const now = getWIBDate();
@@ -31,18 +31,6 @@ function initTkaScheduler(sock, botConfig) {
         
         const tanggal = now.getDate();
         const bulan = now.getMonth() + 1;
-
-        // 🛑 SISTEM MATI OTOMATIS (Auto-Kill)
-        if (bulan === 4 && tanggal >= 7 && jam >= 12) {
-            console.log("🛑 Ujian TKA Selesai. Fitur tkaReminder otomatis dimatikan!");
-            clearInterval(tkaInterval); 
-            return;
-        }
-
-        if (now.getFullYear() > 2026 || bulan > 4) {
-            clearInterval(tkaInterval);
-            return;
-        }
 
         // 1. PERIODE: SEKARANG s.d 5 APRIL (Kirim Jam 16:30 WIB)
         if (bulan === 4 && tanggal <= 5 && jam === 16 && menit === 30 && sentFlags.soreHarian !== tglID) {
@@ -65,7 +53,7 @@ function initTkaScheduler(sock, botConfig) {
                 const teksLengkap = teksRandom + `\n\n📁 *INFO KISI-KISI TKA:* \nBuat kalian yang dapet kisi-kisi (khususnya *MTK & B. Indo*), tolong bantu kumpulin ke folder ini ya:\n${LINK_FOLDER_KISIKISI}\n\n⚠️ _Catatan: Dilarang upload file aneh di luar kisi-kisi!_`;
                 
                 await sock.sendMessage(ID_GRUP_TUJUAN, { text: teksLengkap });
-                sentFlags.soreHarian = tglID; // Tandai khusus pesan sore harian
+                sentFlags.soreHarian = tglID; 
             } catch (err) { console.error("Error Pengingat Sore TKA:", err); }
         }
 
@@ -133,4 +121,4 @@ function initTkaScheduler(sock, botConfig) {
 }
 
 module.exports = { initTkaScheduler };
-                                                        
+            
