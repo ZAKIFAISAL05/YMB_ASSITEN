@@ -87,14 +87,12 @@ async function handleMessages(sock, m, botConfig, utils) {
             return await sock.sendMessage(sender, { text: menuTeks });
         }
 
-        // Routing Perintah User (Ditambah alias agar lebih mudah)
-        const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah', 'hapus'];
-        
-        // Routing Perintah Admin
-        const adminCmds = ['update', 'update_jadwal', 'hapus_db', 'grup', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru'];
+        // --- PERBAIKAN ROUTING ---
+        // 'hapus' dan 'update' adalah wewenang admin.
+        const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah'];
+        const adminCmds = ['update', 'update_jadwal', 'hapus', 'hapus_db', 'grup', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru'];
 
         if (userCmds.includes(cmd)) {
-            // Kita kirim '!' + cmd agar userHandler tetap mengenali formatnya jika diperlukan
             await handleUserCommands(sock, msg, '!' + cmd, args, utils);
         } else if (adminCmds.includes(cmd)) {
             if (!isAdmin) return await sock.sendMessage(sender, { text: nonAdminMsg });
@@ -114,3 +112,4 @@ async function handleMessages(sock, m, botConfig, utils) {
 }
 
 module.exports = { handleMessages };
+        
