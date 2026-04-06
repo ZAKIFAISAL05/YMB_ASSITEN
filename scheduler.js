@@ -283,7 +283,8 @@ async function initListPrMingguanScheduler(sock, botConfig) {
     }, 35000);
 }
 
-async function sendJadwalBesokManual(sock, targetJid) {
+// --- PERBAIKAN PADA PARAMETER TARGET JID ---
+async function sendJadwalBesokManual(sock, targetJid = null) {
     try {
         const now = getWIBDate();
         const hariIni = now.getDay(); 
@@ -312,7 +313,11 @@ async function sendJadwalBesokManual(sock, targetJid) {
             teksPR += `${updatedTugas}\n\n`;
         }
         teksPR += `━━━━━━━━━━━━━━━━━━━━\n⚠️ *Salah list tugas?*\nHubungi nomor: *089531549103*`;
-        await sock.sendMessage(targetJid || ID_GRUP_TUJUAN, { text: teksPR });
+        
+        // Pengaman: Jika targetJid kosong (null), otomatis dialihkan ke ID_GRUP_TUJUAN
+        const receiver = targetJid || ID_GRUP_TUJUAN;
+        
+        await sock.sendMessage(receiver, { text: teksPR });
         await new Promise(resolve => setTimeout(resolve, 5000));
         
         const jadwalFinal = rawMapel.map(mapel => {
@@ -325,7 +330,7 @@ async function sendJadwalBesokManual(sock, targetJid) {
         }).join('\n');
         
         const formatPesan = `🚀 *PERSIAPAN JADWAL BESOK*\n📅 *${dayLabels[hariBesok].toUpperCase()}, ${tglBesok}*\n━━━━━━━━━━━━━━━━━━━━\n\n${jadwalFinal}\n\n━━━━━━━━━━━━━━━━━━━━\n💡 _"${motivasi}"_\n\n*Tetap semangat ya!* 😇`;
-        await sock.sendMessage(targetJid || ID_GRUP_TUJUAN, { text: formatPesan });
+        await sock.sendMessage(receiver, { text: formatPesan });
     } catch (err) { console.error("Jadwal Manual Error:", err); }
 }
 
@@ -338,3 +343,4 @@ module.exports = {
     getWeekDates,
     sendJadwalBesokManual
 };
+                       
