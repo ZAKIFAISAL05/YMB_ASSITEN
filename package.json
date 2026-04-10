@@ -8,11 +8,11 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "6.6.0",
-    "pino": "latest",
-    "express": "latest",
-    "qrcode": "latest",
-    "link-preview-js": "latest",
-    "axios": "latest",
-    "form-data": "latest"
+    "pino": "8.17.0",
+    "express": "4.19.2",
+    "qrcode": "1.5.4",
+    "link-preview-js": "3.0.5",
+    "axios": "1.6.8",
+    "form-data": "4.0.0"
   }
 }
