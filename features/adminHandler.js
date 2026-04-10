@@ -209,35 +209,43 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
 
         case '!hapus':
+            // Ambil input: target (hari/deadline) dan mapel (nama mapel/semua)
             const targetHapus = args[0]?.toLowerCase(); 
             const targetMapel = args.slice(1).join(' ').toLowerCase();
 
-            // LOGIKA HAPUS DEADLINE (DATA BASE 'deadline')
+            // 1. LOGIKA HAPUS DEADLINE
             if (targetHapus === 'deadline') {
                 try {
-                    if (targetMapel === 'semua' || !targetMapel) {
-                        db.updateTugas('deadline', "[]");
+                    // Cek jika admin ingin hapus SEMUA deadline
+                    if (targetMapel === 'semua' || targetMapel === '') {
+                        db.updateTugas('deadline', "[]"); // Reset ke array kosong
                         return await sock.sendMessage(sender, { text: "✅ *DATABASE CLEANED*\nSemua daftar deadline telah dihapus!" });
                     }
+                    
+                    // Hapus satu per satu jika bukan 'semua'
                     let raw = db.getAll().deadline;
                     let list = JSON.parse(raw || "[]");
                     let filtered = list.filter(item => !item.task.toLowerCase().includes(targetMapel));
+                    
                     db.updateTugas('deadline', JSON.stringify(filtered, null, 2));
                     return await sock.sendMessage(sender, { text: `✅ Deadline *${targetMapel}* telah dihapus!` });
-                } catch {
+                } catch (e) {
                     db.updateTugas('deadline', "[]");
                     return await sock.sendMessage(sender, { text: "✅ Data deadline dibersihkan!" });
                 }
             }
             
-            // LOGIKA HAPUS HARI PELAJARAN (DATA BASE 'senin', 'selasa', dll)
-            if (['senin', 'selasa', 'rabu', 'kamis', 'jumat'].includes(targetHapus)) {
-                if (targetMapel === 'semua' || !targetMapel) {
-                    db.updateTugas(targetHapus, "");
-                    await sock.sendMessage(sender, { text: `✅ *DATABASE CLEANED*\nSemua data hari *${targetHapus.toUpperCase()}* dihapus!` });
+            // 2. LOGIKA HAPUS HARI PELAJARAN (Senin-Jumat)
+            const hariValid = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
+            if (hariValid.includes(targetHapus)) {
+                // Cek jika admin ingin hapus SEMUA tugas di hari tersebut
+                if (targetMapel === 'semua' || targetMapel === '') {
+                    db.updateTugas(targetHapus, ""); // Kosongkan database hari itu
+                    return await sock.sendMessage(sender, { text: `✅ *DATABASE CLEANED*\nSemua data hari *${targetHapus.toUpperCase()}* dihapus!` });
                 } else {
-                    const findM = STRUKTUR_JADWAL[targetHapus].find(m => new RegExp(`\\b${targetMapel}\\b`, 'i').test(m));
-                    if (!findM) return await sock.sendMessage(sender, { text: `❌ *MAPEL TIDAK DITEMUKAN*` });
+                    // Hapus satu mapel spesifik (misal: !hapus senin ipa)
+                    const findM = STRUKTUR_JADWAL[targetHapus]?.find(m => new RegExp(`\\b${targetMapel}\\b`, 'i').test(m));
+                    if (!findM) return await sock.sendMessage(sender, { text: `❌ *MAPEL TIDAK DITEMUKAN*\nMapel ${targetHapus}: ${STRUKTUR_JADWAL[targetHapus].join(', ')}` });
                     
                     const emojiMapel = MAPEL_CONFIG[findM];
                     let currentData = db.getAll()[targetHapus] || "";
@@ -245,11 +253,12 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                     let filtered = entries.filter(e => !e.includes(emojiMapel));
                     
                     db.updateTugas(targetHapus, filtered.join('\n\n').trim());
-                    await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}*!` });
+                    return await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}*!` });
                 }
-            } else {
-                await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari/deadline] [mapel/semua]*" });
-            }
+            } 
+            
+            // Jika format tidak sesuai (misal: cuma ketik !hapus tanpa argumen)
+            await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari/deadline] [mapel/semua]*" });
             break;
 
         case '!update_deadline':
