@@ -73,13 +73,38 @@ async function handleMessages(sock, m, botConfig, utils) {
                 menuTeks += 
                     `\n🛠️ *PANDUAN LENGKAP PENGURUS (ADMIN)*\n` +
                     `━━━━━━━━━━━━━━━━━━━━\n` +
+
                     `✅ *!update [hari] [mapel] [tugas]*\n` +
+                    `➝ Fungsi: Update PR + kirim ke grup\n` +
+                    `➝ Contoh:\n` +
+                    `!update senin matematika halaman 10\n\n` +
+
+                    `📝 *!update_jadwal [hari] [mapel] [tugas]*\n` +
+                    `➝ Fungsi: Update PR tanpa kirim ke grup\n` +
+                    `➝ Contoh:\n` +
+                    `!update_jadwal selasa bahasa indonesia bab 2\n\n` +
+
                     `📢 *!info [pesan]*\n` +
-                    `❌ *!hapus [hari] [mapel]*\n` +
-                    `📅 *!update_jadwal [hari] [mapel] [tugas]*\n` +
-                    `📂 *!cek_db* -> Cek data mentah\n` +
-                    `🔄 *!jadwal_baru* -> Sync jadwal\n` +
-                    `⏳ *!deadline [tugas]* -> Update DL\n`;
+                    `➝ Fungsi: Kirim pengumuman ke grup\n` +
+                    `➝ Contoh:\n` +
+                    `!info Besok ulangan matematika\n\n` +
+
+                    `❌ *!hapus [hari] [mapel/semua]*\n` +
+                    `➝ Fungsi: Hapus data PR\n` +
+                    `➝ Contoh:\n` +
+                    `!hapus senin matematika\n` +
+                    `!hapus senin semua\n\n` +
+
+                    `🔄 *!jadwal_baru*\n` +
+                    `➝ Fungsi: Sinkronisasi jadwal & PR\n\n` +
+
+                    `📂 *!cek_db*\n` +
+                    `➝ Fungsi: Lihat semua data database\n\n` +
+
+                    `⏳ *!update_deadline [tugas] | [YYYY-MM-DD]*\n` +
+                    `➝ Fungsi: Tambah deadline otomatis\n` +
+                    `➝ Contoh:\n` +
+                    `!update_deadline matematika halaman 10 | 2026-04-15\n\n`;
             } 
 
             menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Tips: Sekarang bisa ketik tanpa tanda (!) _`;
@@ -88,7 +113,6 @@ async function handleMessages(sock, m, botConfig, utils) {
         }
 
         // --- PERBAIKAN ROUTING ---
-        // 'hapus' dan 'update' adalah wewenang admin.
         const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah'];
         const adminCmds = ['update', 'update_jadwal', 'hapus', 'hapus_db', 'grup', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru'];
 
@@ -112,4 +136,3 @@ async function handleMessages(sock, m, botConfig, utils) {
 }
 
 module.exports = { handleMessages };
-        
