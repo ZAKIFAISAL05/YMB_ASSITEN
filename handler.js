@@ -21,7 +21,7 @@ function getClosestCommand(cmd) {
 
     const validCommands = [
         'cekbot', 'list_pr', 'tugas_lama', 'bantuan', 'jadwal', 'lapor', 
-        'update', 'update_jadwal', 'hapus', 'grup', 'polling', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru', 'menu'
+         'update', 'update_jadwal', 'hapus', 'grup', 'polling', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru', 'menu', 'update_deadline'
     ];
 
     if (validCommands.includes(cmd)) return null;
@@ -114,7 +114,7 @@ async function handleMessages(sock, m, botConfig, utils) {
 
         // --- PERBAIKAN ROUTING ---
         const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah'];
-        const adminCmds = ['update', 'update_jadwal', 'hapus', 'hapus_db', 'grup', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru'];
+        const adminCmds = ['update', 'update_jadwal', 'hapus', 'hapus_db', 'grup', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru', 'update_deadline'];
 
         if (userCmds.includes(cmd)) {
             await handleUserCommands(sock, msg, '!' + cmd, args, utils);
