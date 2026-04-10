@@ -83,11 +83,11 @@ async function handleMessages(sock, m, botConfig, utils) {
                     `📢 *!info [pesan]*\n` +
                     `➝ Kirim pengumuman ke grup\n\n` +
 
-                    `⏳ *!update_deadline [tugas] | [TGL]*\n` +
+                    `⏳ *!update_deadline [tugas] | [YYYY-MM-DD]*\n` +
                     `➝ Tambah deadline otomatis\n\n` +
 
-                    `❌ *!hapus [hari] [mapel/semua]*\n` +
-                    `➝ Hapus data PR\n\n` +
+                    `❌ *!hapus [hari/deadline] [mapel/semua]*\n` +
+                    `➝ Contoh: *!hapus deadline mtk* atau *!hapus senin semua*\n\n` +
 
                     `🔄 *!jadwal_baru*\n` +
                     `➝ Sinkron ulang semua data\n\n` +
@@ -105,7 +105,6 @@ async function handleMessages(sock, m, botConfig, utils) {
 
         // --- ROUTING COMMAND ---
         const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah'];
-        // Sinkronisasi adminCmds dengan menu bantuan
         const adminCmds = ['update', 'update_list_pr', 'hapus', 'info', 'reset-bot', 'cek_db', 'jadwal_baru', 'update_deadline'];
 
         if (userCmds.includes(cmd)) {
