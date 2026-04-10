@@ -30,9 +30,6 @@ const {
     sendJadwalBesokManual 
 } = require('./scheduler'); 
 
-// --- IMPORT TKA REMINDER ---
-const { initTkaScheduler } = require('./tkaReminder'); 
-
 // --- IMPORT UI VIEWS ---
 const { renderDashboard } = require('./views/dashboard'); 
 const { renderMediaView } = require('./views/mediaView'); 
@@ -67,7 +64,6 @@ let botConfig = {
     smartFeedback: true, 
     prMingguan: true, 
     sahur: true,
-    tkaReminder: true 
 };
 
 /**
@@ -229,9 +225,6 @@ async function start() {
             initSmartFeedbackScheduler(sock, botConfig);
             initListPrMingguanScheduler(sock, botConfig);
             initSahurScheduler(sock, botConfig);
-
-            // Inisialisasi TKA Reminder
-            initTkaScheduler(sock, botConfig);
         }
     });
 
