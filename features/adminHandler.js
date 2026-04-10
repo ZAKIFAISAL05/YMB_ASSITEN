@@ -14,6 +14,28 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
     const sender = msg.key.remoteJid;
     const { dates } = utils.getWeekDates();
 
+    // 🔥 TAMBAHAN: AUTO CLEAN DEADLINE (TIDAK MENGUBAH APAPUN)
+    const autoCleanDeadline = () => {
+        try {
+            let raw = db.getAll().deadline;
+            if (!raw) return;
+
+            let list;
+            try {
+                list = JSON.parse(raw);
+            } catch {
+                return; // kalau format lama (string biasa), skip biar aman
+            }
+
+            const now = new Date();
+            const filtered = list.filter(item => new Date(item.deadline) >= now);
+
+            db.updateTugas('deadline', JSON.stringify(filtered, null, 2));
+        } catch {}
+    };
+
+    autoCleanDeadline();
+
     // Fungsi tambahan untuk saran jika admin salah ketik mapel
     const getSuggestion = (dayKey, input) => {
         const listMapel = STRUKTUR_JADWAL[dayKey] || [];
@@ -103,7 +125,7 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
 
         case '!update':
-        case '!update_jadwal':
+        case '!update_list_pr':
             let mediaSection = "";
             const isImageUpdate = msg.message.imageMessage;
             const isDocUpdate = msg.message.documentMessage;
@@ -167,8 +189,8 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
 
         case '!hapus':
-            const targetHapus = args[0]?.toLowerCase(); // Ambil hari
-            const targetMapel = args.slice(1).join(' ').toLowerCase(); // Ambil nama mapel
+            const targetHapus = args[0]?.toLowerCase(); 
+            const targetMapel = args.slice(1).join(' ').toLowerCase();
             
             if (['senin', 'selasa', 'rabu', 'kamis', 'jumat'].includes(targetHapus)) {
                 if (targetMapel === 'semua') {
@@ -181,7 +203,6 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                     const emojiMapel = MAPEL_CONFIG[findM];
                     let currentData = db.getAll()[targetHapus] || "";
                     
-                    // Logika Hapus per Blok (Menghapus sampai separator & link web)
                     let entries = currentData.split(/\n\n(?=•)/g);
                     let filtered = entries.filter(e => !e.includes(emojiMapel));
                     
@@ -193,7 +214,32 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             }
             break;
 
-        case '!deadline':
+        case '!update_deadline':
+            // 🔥 TAMBAHAN FITUR TANPA MENGHAPUS YANG LAMA
+            const inputDL = body.slice(16).trim();
+
+            if (inputDL.includes('|')) {
+                const [task, dateStr] = inputDL.split('|').map(v => v.trim());
+                const deadlineDate = new Date(dateStr);
+
+                if (!isNaN(deadlineDate)) {
+                    let data = db.getAll().deadline || "[]";
+                    let list = [];
+
+                    try { list = JSON.parse(data); } catch { list = []; }
+
+                    list.push({ task, deadline: dateStr });
+
+                    db.updateTugas('deadline', JSON.stringify(list, null, 2));
+
+                    await sock.sendMessage(sender, {
+                        text: `✅ Deadline ditambahkan!\n📌 ${task}\n📅 ${dateStr}`
+                    });
+                    break;
+                }
+            }
+
+            // fallback ke sistem lama (TIDAK DIHAPUS)
             db.updateTugas('deadline', body.slice(10).trim());
             await sock.sendMessage(sender, { text: `✅ Daftar tugas belum dikumpul diperbarui!` });
             break;
