@@ -1,11 +1,11 @@
 const db = require('../data');
-const { delay, downloadMediaMessage } = require("@whiskeysockets/baileys"); 
+const { delay, downloadMediaMessage } = require("@whiskeysockets/baileys");
 const fs = require('fs');
 const path = require('path');
 const { MAPEL_CONFIG, STRUKTUR_JADWAL, LABELS } = require('../pelajaran');
 const { JADWAL_PELAJARAN } = require('../constants');
 
-const ID_GRUP_TUJUAN = '120363403625197368@g.us'; 
+const ID_GRUP_TUJUAN = '120363403625197368@g.us';
 const MY_DOMAIN = 'https://assitenymb.zeabur.app';
 const PUBLIC_PATH = '/app/auth_info/public_files';
 const SEP = '━━━━━━━━━━━━━━━━━━━━';
@@ -14,7 +14,7 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
     const sender = msg.key.remoteJid;
     const { dates } = utils.getWeekDates();
 
-    // 🔥 TAMBAHAN: AUTO CLEAN DEADLINE (TIDAK MENGUBAH APAPUN)
+    // 🔥 TAMBAHAN: AUTO CLEAN DEADLINE
     const autoCleanDeadline = () => {
         try {
             let raw = db.getAll().deadline;
@@ -24,19 +24,17 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             try {
                 list = JSON.parse(raw);
             } catch {
-                return; // kalau format lama (string biasa), skip biar aman
+                return; // skip jika format lama
             }
 
             const now = new Date();
             const filtered = list.filter(item => new Date(item.deadline) >= now);
-
             db.updateTugas('deadline', JSON.stringify(filtered, null, 2));
-        } catch {}
+        } catch (e) {}
     };
 
     autoCleanDeadline();
 
-    // Fungsi tambahan untuk saran jika admin salah ketik mapel
     const getSuggestion = (dayKey, input) => {
         const listMapel = STRUKTUR_JADWAL[dayKey] || [];
         return listMapel.find(m => input.toLowerCase().includes(m.toLowerCase().substring(0, 3)));
@@ -46,7 +44,8 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
         const dayMap = { 'senin': 0, 'selasa': 1, 'rabu': 2, 'kamis': 3, 'jumat': 4 };
         const dayLabels = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat'];
         let allData = db.getAll() || {};
-        let currentData = String(allData[dayKey] || ""); 
+        let currentData = String(allData[dayKey] || "");
+        
         if (currentData.includes("Belum ada tugas")) currentData = "";
         let existingEntries = currentData.split(/\n(?=•)/g).filter(e => e.trim() !== "");
         if (!STRUKTUR_JADWAL[dayKey]) return "";
@@ -55,19 +54,25 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
         STRUKTUR_JADWAL[dayKey].forEach(mKey => {
             const emojiMapel = MAPEL_CONFIG[mKey];
             const mapelRegex = new RegExp(`\\b${mKey}\\b`, 'i');
+            
             if (mapelRegex.test(input)) {
                 foundMatch = true;
                 let parts = input.split(mapelRegex);
                 let desc = (parts[1] && parts[1].trim() !== "") ? parts[1].split(/label:/i)[0].split(new RegExp(SEP))[0].trim() : "";
                 if (desc === "") return;
+
                 let linkSection = "";
                 if (input.includes(SEP)) {
                     const partsLink = input.split(SEP);
                     if (partsLink.length >= 2) linkSection = `\n${SEP}\n${partsLink[1].trim()}\n${SEP}`;
                 }
+
                 let labelsFound = [];
-                for (let l in LABELS) { if (new RegExp(`\\b${l}\\b`, 'i').test(input)) labelsFound.push(LABELS[l]); }
+                for (let l in LABELS) { 
+                    if (new RegExp(`\\b${l}\\b`, 'i').test(input)) labelsFound.push(LABELS[l]); 
+                }
                 if (labelsFound.length === 0) labelsFound.push(LABELS['biasa']);
+                
                 let finalLabel = labelsFound.join(' | ');
                 let existingIndex = existingEntries.findIndex(e => e.includes(emojiMapel));
                 
@@ -102,15 +107,20 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                 const dayKeys = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
                 const currentDb = db.getAll() || {};
                 const backupPR = [];
+
                 dayKeys.forEach(h => {
-                    if (currentDb[h] && !currentDb[h].includes("Belum ada tugas")) backupPR.push(...currentDb[h].split(/\n(?=•)/g));
+                    if (currentDb[h] && !currentDb[h].includes("Belum ada tugas")) {
+                        backupPR.push(...currentDb[h].split(/\n(?=•)/g));
+                    }
                     db.updateTugas(h, ""); 
                 });
+
                 for (let i = 1; i <= 5; i++) {
                     const hKey = dayKeys[i-1];
                     const cleanMapels = JADWAL_PELAJARAN[i].toLowerCase().split('\n').map(l => l.replace(/[^\w\s]/gi, '').trim());
                     STRUKTUR_JADWAL[hKey] = cleanMapels;
                 }
+
                 backupPR.forEach(entry => {
                     for (const h of dayKeys) {
                         if (STRUKTUR_JADWAL[h].some(m => entry.toLowerCase().includes(m))) {
@@ -121,7 +131,9 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                     }
                 });
                 await sock.sendMessage(sender, { text: "✅ *SISTEM REFRESHED!*\nJadwal dan PR telah disinkronkan." });
-            } catch (e) { await sock.sendMessage(sender, { text: "❌ Error: " + e.message }); }
+            } catch (e) { 
+                await sock.sendMessage(sender, { text: "❌ Error: " + e.message }); 
+            }
             break;
 
         case '!update':
@@ -129,6 +141,7 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             let mediaSection = "";
             const isImageUpdate = msg.message.imageMessage;
             const isDocUpdate = msg.message.documentMessage;
+
             if (isImageUpdate || isDocUpdate) {
                 try {
                     if (!fs.existsSync(PUBLIC_PATH)) fs.mkdirSync(PUBLIC_PATH, { recursive: true });
@@ -138,14 +151,19 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                     const fileName = `tugas_${Date.now()}${ext}`;
                     fs.writeFileSync(path.join(PUBLIC_PATH, fileName), buffer);
                     mediaSection = `\n${SEP}\n🔗 *Link Web File ${fileLabel}:*\n${MY_DOMAIN}/tugas/${fileName}\n${SEP}`;
-                } catch (err) { await sock.sendMessage(sender, { text: "⚠️ *Gagal membuat link file...*" }); }
+                } catch (err) { 
+                    await sock.sendMessage(sender, { text: "⚠️ *Gagal membuat link file...*" }); 
+                }
             }
+
             const daysUpdate = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
             const firstPart = args.slice(0, 3).join(' ').toLowerCase();
             let dIdx = daysUpdate.findIndex(d => firstPart.includes(d));
             
             if (dIdx === -1) {
-                return await sock.sendMessage(sender, { text: "❌ *HARI TIDAK DIKENALI*\n\nMohon sertakan nama hari (Senin-Jumat).\nContoh: *!update senin matematika hal 10*" });
+                return await sock.sendMessage(sender, { 
+                    text: "❌ *HARI TIDAK DIKENALI*\n\nMohon sertakan nama hari (Senin-Jumat).\nContoh: *!update senin matematika hal 10*" 
+                });
             }
 
             const dayKey = daysUpdate[dIdx];
@@ -159,7 +177,9 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             }
 
             db.updateTugas(dayKey, res);
-            if (cmd === '!update') await sendToGroupSafe({ text: `📌 *Update PR Baru* 📢\n\n*\`📅 ${dayKey.toUpperCase()}\`* ➝ ${dates[dIdx]}\n\n${res}` });
+            if (cmd === '!update') {
+                await sendToGroupSafe({ text: `📌 *Update PR Baru* 📢\n\n*\`📅 ${dayKey.toUpperCase()}\`* ➝ ${dates[dIdx]}\n\n${res}` });
+            }
             await sock.sendMessage(sender, { text: `✅ *Berhasil Update data ${dayKey}!*` });
             break;
 
@@ -202,12 +222,11 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                     
                     const emojiMapel = MAPEL_CONFIG[findM];
                     let currentData = db.getAll()[targetHapus] || "";
-                    
                     let entries = currentData.split(/\n\n(?=•)/g);
                     let filtered = entries.filter(e => !e.includes(emojiMapel));
                     
                     db.updateTugas(targetHapus, filtered.join('\n\n').trim());
-                    await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}* beserta file terkait!` });
+                    await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}*!` });
                 }
             } else {
                 await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari] [mapel/semua]*" });
@@ -215,9 +234,7 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
 
         case '!update_deadline':
-            // 🔥 TAMBAHAN FITUR TANPA MENGHAPUS YANG LAMA
             const inputDL = body.slice(16).trim();
-
             if (inputDL.includes('|')) {
                 const [task, dateStr] = inputDL.split('|').map(v => v.trim());
                 const deadlineDate = new Date(dateStr);
@@ -225,30 +242,28 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                 if (!isNaN(deadlineDate)) {
                     let data = db.getAll().deadline || "[]";
                     let list = [];
-
                     try { list = JSON.parse(data); } catch { list = []; }
 
                     list.push({ task, deadline: dateStr });
-
                     db.updateTugas('deadline', JSON.stringify(list, null, 2));
 
                     await sock.sendMessage(sender, {
-                        text: `✅ Deadline ditambahkan!\n📌 ${task}\n📅 ${dateStr}`
+                        text: `✅ *Deadline ditambahkan!*\n\n📌 ${task}\n📅 ${dateStr}`
                     });
                     break;
                 }
             }
-
-            // fallback ke sistem lama (TIDAK DIHAPUS)
             db.updateTugas('deadline', body.slice(10).trim());
-            await sock.sendMessage(sender, { text: `✅ Daftar tugas belum dikumpul diperbarui!` });
+            await sock.sendMessage(sender, { text: `✅ Daftar tugas diperbarui!` });
             break;
 
         case '!cek_db':
             const allDataDb = db.getAll() || {};
             let teksDb = `📂 *KONTROL DATABASE PR*\n${SEP}\n\n`;
-            ['senin', 'selasa', 'rabu', 'kamis', 'jumat'].forEach(hari => { teksDb += `📌 *${hari.toUpperCase()}*:\n${allDataDb[hari] || "_Kosong_"}\n\n`; });
-            await sock.sendMessage(sender, { text: teksDb + SEP });
+            ['senin', 'selasa', 'rabu', 'kamis', 'jumat'].forEach(hari => { 
+                teksDb += `📌 *${hari.toUpperCase()}*:\n${allDataDb[hari] || "_Kosong_"}\n\n${SEP}\n`; 
+            });
+            await sock.sendMessage(sender, { text: teksDb });
             break;
 
         case '!reset-bot':
