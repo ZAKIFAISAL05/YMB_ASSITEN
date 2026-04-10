@@ -4,7 +4,7 @@ const { handleAdminCommands } = require('./features/adminHandler');
 const fs = require('fs');
 
 // Daftar ID Admin
-const ADMIN_RAW = ['6289531549103', '171425214255294', '6285158738155' , '241849843351688' , '254326740103190' , '8474121494667']; 
+const ADMIN_RAW = ['6289531549103', '171425214255294', '6285158738155', '241849843351688', '254326740103190', '8474121494667']; 
 
 function getClosestCommand(cmd) {
     const commandsMap = {
@@ -12,16 +12,17 @@ function getClosestCommand(cmd) {
         'p': 'cekbot',
         'pr': 'list_pr',
         'deadline': 'tugas_lama',
+        'dl': 'tugas_lama',
         'add': 'lapor',
         'tambah': 'lapor',
-        'hapus': 'lapor'
+        'jwl': 'jadwal'
     };
 
     if (commandsMap[cmd]) return commandsMap[cmd];
 
     const validCommands = [
         'cekbot', 'list_pr', 'tugas_lama', 'bantuan', 'jadwal', 'lapor', 
-         'update', 'update_jadwal', 'hapus', 'grup', 'polling', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru', 'menu', 'update_deadline'
+        'update', 'update_list_pr', 'hapus', 'info', 'reset-bot', 'cek_db', 'jadwal_baru', 'update_deadline'
     ];
 
     if (validCommands.includes(cmd)) return null;
@@ -53,68 +54,59 @@ async function handleMessages(sock, m, botConfig, utils) {
             return await sock.sendMessage(sender, { text: response }, { quoted: msg });
         }
 
-        // Ambil kata pertama dan hilangkan simbol ! jika ada
+        // Parsing Command
         const args = body.split(' ');
         const cmd = args[0].toLowerCase().replace('!', '');
 
-        // --- LOGIKA MENU BANTUAN / MENU ---
+        // --- LOGIKA MENU BANTUAN ---
         if (['bantuan', 'menu', 'help'].includes(cmd)) {
             let menuTeks = 
                 `✨ *MENU UTAMA SYTEAM-BOT* ✨\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
                 `Halo *${pushName}*! Berikut perintah kamu:\n\n` +
-                `📝 *pr* -> Liat daftar PR\n` +
-                `📆 *jadwal* -> Liat jadwal pelajaran\n` +
+                `📝 *pr* -> Lihat daftar PR\n` +
+                `📆 *jadwal* -> Lihat jadwal pelajaran\n` +
                 `📢 *lapor* -> Tambah/Hapus PR (Lapor Admin)\n` +
                 `⏳ *deadline* -> PR belum dikumpul\n` +
                 `⚡ *p* -> Cek status bot\n`;
 
             if (isAdmin) {
                 menuTeks += 
-                    `\n🛠️ *PANDUAN LENGKAP PENGURUS (ADMIN)*\n` +
+                    `\n🛠️ *PANDUAN PENGURUS (ADMIN)*\n` +
                     `━━━━━━━━━━━━━━━━━━━━\n` +
-
                     `✅ *!update [hari] [mapel] [tugas]*\n` +
-                    `➝ Fungsi: Update PR + kirim ke grup\n` +
-                    `➝ Contoh:\n` +
-                    `!update senin matematika halaman 10\n\n` +
+                    `➝ Update PR & kirim ke grup\n\n` +
 
-                    `📝 *!update_jadwal [hari] [mapel] [tugas]*\n` +
-                    `➝ Fungsi: Update PR tanpa kirim ke grup\n` +
-                    `➝ Contoh:\n` +
-                    `!update_jadwal selasa bahasa indonesia bab 2\n\n` +
+                    `📝 *!update_list_pr [hari] [mapel] [tugas]*\n` +
+                    `➝ Update PR (Hanya simpan di bot)\n\n` +
 
                     `📢 *!info [pesan]*\n` +
-                    `➝ Fungsi: Kirim pengumuman ke grup\n` +
-                    `➝ Contoh:\n` +
-                    `!info Besok ulangan matematika\n\n` +
+                    `➝ Kirim pengumuman ke grup\n\n` +
+
+                    `⏳ *!update_deadline [tugas] | [TGL]*\n` +
+                    `➝ Tambah deadline otomatis\n\n` +
 
                     `❌ *!hapus [hari] [mapel/semua]*\n` +
-                    `➝ Fungsi: Hapus data PR\n` +
-                    `➝ Contoh:\n` +
-                    `!hapus senin matematika\n` +
-                    `!hapus senin semua\n\n` +
+                    `➝ Hapus data PR\n\n` +
 
                     `🔄 *!jadwal_baru*\n` +
-                    `➝ Fungsi: Sinkronisasi jadwal & PR\n\n` +
+                    `➝ Sinkron ulang semua data\n\n` +
 
                     `📂 *!cek_db*\n` +
-                    `➝ Fungsi: Lihat semua data database\n\n` +
+                    `➝ Intip isi semua database\n\n` +
 
-                    `⏳ *!update_deadline [tugas] | [YYYY-MM-DD]*\n` +
-                    `➝ Fungsi: Tambah deadline otomatis\n` +
-                    `➝ Contoh:\n` +
-                    `!update_deadline matematika halaman 10 | 2026-04-15\n\n`;
+                    `⚙️ *!reset-bot*\n` +
+                    `➝ Restart sistem bot\n`;
             } 
 
-            menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Tips: Sekarang bisa ketik tanpa tanda (!) _`;
-            
+            menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Tips: Bisa ketik perintah tanpa tanda (!)_`;
             return await sock.sendMessage(sender, { text: menuTeks });
         }
 
-        // --- PERBAIKAN ROUTING ---
+        // --- ROUTING COMMAND ---
         const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah'];
-        const adminCmds = ['update', 'update_jadwal', 'hapus', 'hapus_db', 'grup', 'info', 'reset-bot', 'data', 'cek_db', 'jadwal_baru', 'update_deadline'];
+        // Sinkronisasi adminCmds dengan menu bantuan
+        const adminCmds = ['update', 'update_list_pr', 'hapus', 'info', 'reset-bot', 'cek_db', 'jadwal_baru', 'update_deadline'];
 
         if (userCmds.includes(cmd)) {
             await handleUserCommands(sock, msg, '!' + cmd, args, utils);
