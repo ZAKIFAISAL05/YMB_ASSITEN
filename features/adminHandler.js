@@ -211,6 +211,24 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
         case '!hapus':
             const targetHapus = args[0]?.toLowerCase(); 
             const targetMapel = args.slice(1).join(' ').toLowerCase();
+
+            // 🔥 FITUR BARU: HAPUS DEADLINE
+            if (targetHapus === 'deadline') {
+                try {
+                    if (targetMapel === 'semua') {
+                        db.updateTugas('deadline', "[]");
+                        return await sock.sendMessage(sender, { text: "✅ Semua daftar deadline dibersihkan!" });
+                    }
+                    let raw = db.getAll().deadline;
+                    let list = JSON.parse(raw || "[]");
+                    let filtered = list.filter(item => !item.task.toLowerCase().includes(targetMapel));
+                    db.updateTugas('deadline', JSON.stringify(filtered, null, 2));
+                    return await sock.sendMessage(sender, { text: `✅ Deadline *${targetMapel}* telah dihapus!` });
+                } catch {
+                    db.updateTugas('deadline', "");
+                    return await sock.sendMessage(sender, { text: "✅ Data deadline dibersihkan!" });
+                }
+            }
             
             if (['senin', 'selasa', 'rabu', 'kamis', 'jumat'].includes(targetHapus)) {
                 if (targetMapel === 'semua') {
@@ -229,7 +247,7 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                     await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}*!` });
                 }
             } else {
-                await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari] [mapel/semua]*" });
+                await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari/deadline] [mapel/semua]*" });
             }
             break;
 
