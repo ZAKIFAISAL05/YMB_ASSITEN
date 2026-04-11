@@ -29,8 +29,39 @@ async function handleUserCommands(sock, msg, cmd, args, utils) {
                 rekap += `${cleanTugas}\n⏰ Deadline: ${dayLabelsSmall[i]}, ${dates[i]}\n\n`; 
             }
         });
+
+        // ✅ Fix: parse deadline JSON dengan benar
+        let deadlineText = "_Semua tugas selesai_.";
+        try {
+            const dlRaw = currentData.deadline;
+            if (dlRaw) {
+                const dlList = JSON.parse(dlRaw);
+                if (Array.isArray(dlList) && dlList.length > 0) {
+                    deadlineText = dlList.map((item, i) => {
+                        // Format tanggal deadline jadi lebih readable jika format ISO
+                        let tglDeadline = item.deadline;
+                        try {
+                            const d = new Date(item.deadline);
+                            if (!isNaN(d)) {
+                                tglDeadline = d.toLocaleDateString('id-ID', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric'
+                                });
+                            }
+                        } catch (_) {}
+                        return `${i + 1}. 📌 ${item.task}\n   📅 Deadline: ${tglDeadline}`;
+                    }).join('\n\n');
+                }
+            }
+        } catch {
+            // Format lama (string biasa), tampilkan apa adanya
+            if (currentData.deadline && currentData.deadline.trim()) {
+                deadlineText = currentData.deadline;
+            }
+        }
         
-        rekap += `━━━━━━━━━━━━━━━━━━━━\n⏳ *BELUM DIKUMPULKAN:*\n${currentData.deadline || "_Semua tugas selesai_."}\n\n💡 _${motivasi}_\n\n⚠️ *Salah/Tambah PR?* Ketik: *!lapor [isi]*`;
+        rekap += `━━━━━━━━━━━━━━━━━━━━\n⏳ *BELUM DIKUMPULKAN:*\n${deadlineText}\n\n💡 _${motivasi}_\n\n⚠️ *Salah/Tambah PR?* Ketik: *!lapor [isi]*`;
         return rekap;
     };
 
@@ -109,11 +140,23 @@ async function handleUserCommands(sock, msg, cmd, args, utils) {
 
             try {
                 const list = JSON.parse(rawDl || "[]");
-                if (!list.length) {
+                if (!Array.isArray(list) || !list.length) {
                     teksDeadline += `✅ _Semua tugas sudah selesai!_`;
                 } else {
                     list.forEach((item, i) => {
-                        teksDeadline += `${i + 1}. 📌 ${item.task}\n   📅 Deadline: ${item.deadline}\n\n`;
+                        // Format tanggal deadline jadi lebih readable jika format ISO
+                        let tglDeadline = item.deadline;
+                        try {
+                            const d = new Date(item.deadline);
+                            if (!isNaN(d)) {
+                                tglDeadline = d.toLocaleDateString('id-ID', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric'
+                                });
+                            }
+                        } catch (_) {}
+                        teksDeadline += `${i + 1}. 📌 ${item.task}\n   📅 Deadline: ${tglDeadline}\n\n`;
                     });
                 }
             } catch {
