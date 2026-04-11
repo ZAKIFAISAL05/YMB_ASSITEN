@@ -1,9 +1,7 @@
 const db = require('../data');
 const { MOTIVASI_SEKOLAH } = require('../constants');
-// Mengambil data dari file pelajaran yang beda folder
 const { MAPEL_CONFIG, STRUKTUR_JADWAL } = require('../pelajaran'); 
 
-// Ganti dengan nomor WA admin (format: 628xxx@s.whatsapp.net)
 const ADMIN_NUMBER = '6289531549103@s.whatsapp.net'; 
 const HARI_VALID = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
 
@@ -32,23 +30,25 @@ async function handleUserCommands(sock, msg, cmd, args, utils) {
             }
         });
         
-        rekap += `━━━━━━━━━━━━━━━━━━━━\n⏳ *BELUM DIKUMPULKAN:*\n${currentData.deadline || "_Semua tugas selesai_."}\n\n💡 _${motivasi}_\n\n⚠️ *Salah/Tambah PR?* Ketik: *lapor [isi]*`;
+        rekap += `━━━━━━━━━━━━━━━━━━━━\n⏳ *BELUM DIKUMPULKAN:*\n${currentData.deadline || "_Semua tugas selesai_."}\n\n💡 _${motivasi}_\n\n⚠️ *Salah/Tambah PR?* Ketik: *!lapor [isi]*`;
         return rekap;
     };
 
-    // Bersihkan input command
     const cleanCmd = cmd.replace('!', '').toLowerCase();
 
     switch (true) {
+        // !p / !cekbot
         case ['cekbot', 'p', 'tes'].includes(cleanCmd):
-            await sock.sendMessage(sender, { text: '✅ *Bot Syteam Aktif!* \nKetik *!bantuan* untuk melihat menu.' }); 
+            await sock.sendMessage(sender, { text: '✅ *Bot Syteam Aktif!*\nKetik *!bantuan* untuk melihat menu.' }); 
             break;
 
-        case ['list_pr', 'pr', 'tugas', 'list'].includes(cleanCmd):
+        // !pr / !list_pr
+        case ['list_pr', 'pr'].includes(cleanCmd):
             await sock.sendMessage(sender, { text: formatRekap() }); 
             break;
 
-        case ['jadwal', 'jwl'].includes(cleanCmd):
+        // !jadwal / !jwl
+        case ['jadwal', 'jwl'].includes(cleanCmd): {
             const inputHari = args[0]?.toLowerCase();
             let teksJadwal = `📅 *JADWAL PELAJARAN* 📅\n━━━━━━━━━━━━━━━━━━━━\n\n`;
             
@@ -67,21 +67,21 @@ async function handleUserCommands(sock, msg, cmd, args, utils) {
             if (inputHari && HARI_VALID.includes(inputHari)) {
                 teksJadwal += susunJadwal(inputHari);
             } else {
-                HARI_VALID.forEach((day) => {
-                    teksJadwal += susunJadwal(day);
-                });
-                teksJadwal += `_Tips: Ketik *jadwal [hari]* untuk satu hari saja._\n`;
+                HARI_VALID.forEach((day) => { teksJadwal += susunJadwal(day); });
+                teksJadwal += `_Tips: Ketik *!jadwal [hari]* untuk satu hari saja._\n`;
             }
             
             teksJadwal += `━━━━━━━━━━━━━━━━━━━━`;
             await sock.sendMessage(sender, { text: teksJadwal });
             break;
+        }
 
-        case ['lapor', 'lapor_pr', 'tambah', 'hapus'].includes(cleanCmd):
-            const isiLaporan = args.join(" ");
-            if (!isiLaporan || args.length < 1) {
+        // !lapor
+        case ['lapor', 'lapor_pr'].includes(cleanCmd): {
+            const isiLaporan = args.join(" ").trim();
+            if (!isiLaporan) {
                 return await sock.sendMessage(sender, { 
-                    text: "❌ *Format Salah!*\n\nContoh:\n*lapor Senin ada PR MTK*\natau\n*lapor hapus PR hari Selasa*" 
+                    text: "❌ *Format Salah!*\n\nContoh:\n*!lapor Senin ada PR MTK*\natau\n*!lapor hapus PR hari Selasa*" 
                 });
             }
 
@@ -100,11 +100,31 @@ async function handleUserCommands(sock, msg, cmd, args, utils) {
             await sock.sendMessage(ADMIN_NUMBER, { text: pesanLaporan, mentions: [sender] });
             await sock.sendMessage(sender, { text: `✅ *Laporan Terkirim!*\nMakasih *${pushName}*, Admin bakal segera cek pesanmu.` });
             break;
+        }
 
-        case ['tugas_lama', 'deadline', 'dl'].includes(cleanCmd):
-            const infoDl = (db.getAll() || {}).deadline || "Semua tugas sudah selesai.";
-            await sock.sendMessage(sender, { text: `⏳ *DAFTAR TUGAS BELUM DIKUMPULKAN*\n\n${infoDl}` });
+        // !deadline / !dl / !tugas_lama
+        case ['tugas_lama', 'deadline', 'dl'].includes(cleanCmd): {
+            const rawDl = (db.getAll() || {}).deadline;
+            let teksDeadline = `⏳ *DAFTAR TUGAS BELUM DIKUMPULKAN*\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+            try {
+                const list = JSON.parse(rawDl || "[]");
+                if (!list.length) {
+                    teksDeadline += `✅ _Semua tugas sudah selesai!_`;
+                } else {
+                    list.forEach((item, i) => {
+                        teksDeadline += `${i + 1}. 📌 ${item.task}\n   📅 Deadline: ${item.deadline}\n\n`;
+                    });
+                }
+            } catch {
+                // Format lama (string biasa)
+                teksDeadline += rawDl || `✅ _Semua tugas sudah selesai!_`;
+            }
+
+            teksDeadline += `\n━━━━━━━━━━━━━━━━━━━━`;
+            await sock.sendMessage(sender, { text: teksDeadline });
             break;
+        }
     }
 }
 
