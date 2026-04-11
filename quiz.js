@@ -1,59 +1,58 @@
 const QUIZ_BANK = {
-    // 1. SENIN: TKA MATEMATIKA
+    // 1. SENIN: UP, PAIBP, BING, IPA, BIND
     1: [
         { 
-            question: "Gimana tadi TKA Matematika-nya? Angka-angkanya aman?", 
-            options: ["Lancar Jaya", "Agak Pusing", "Selesai Semua", "Bismillah Bagus"], 
-            feedbacks: ["Keren! Logika kamu emang juara. 📐", "Gak apa-apa, yang penting sudah usaha maksimal! 🔢", "Mantap! Lega banget kan kalau sudah selesai. ✅", "Amin! Hasil tidak akan mengkhianati proses. 🙏"] 
+            question: "Gimana sekolah hari ini? Tadi ada pelajaran IPA sama B. Inggris kan?", 
+            options: ["Seru Banget", "Lumayan Capek", "Materi Aman", "Banyak Tugas"], 
+            feedbacks: ["Mantap! Semangat terus belajarnya ya. 🚀", "Wajar kok, Senin emang padat. Istirahat ya! 🔋", "Keren, penguasaan materi kamu emang oke. 🧠", "Cicil pelan-pelan, pasti selesai kok! ✍️"] 
         },
         { 
-            question: "Soal mana yang menurutmu paling menantang tadi?", 
-            options: ["Aljabar", "Geometri", "Statistika", "Semua Menantang"], 
-            feedbacks: ["Aljabar memang butuh ketelitian tinggi! 🧠", "Geometri melatih imajinasi visual kamu, mantap! 📏", "Data dan angka emang seru buat diulik ya. 📊", "Kamu hebat bisa melewati semuanya! 🏆"] 
+            question: "Tadi materi PAI sama B. Indo gimana? Ada yang susah gak?", 
+            options: ["Aman", "Lumayan", "Banyak Catatan", "Bisa Dipahami"], 
+            feedbacks: ["Bagus kalau aman, lanjut terus! ✨", "Pelan-pelan aja belajarnya. 📖", "Catatan itu investasi buat ujian nanti! ✍️", "Mantap, fokus kamu keren hari ini. 🎯"] 
         }
     ],
 
-    // 2. SELASA: TKA BAHASA INDONESIA
+    // 2. SELASA: PJOK, MTK, IPS, TIK
     2: [
         { 
-            question: "Hari kedua TKA Bahasa Indonesia! Tadi bacaannya panjang-panjang ya?", 
-            options: ["Lumayan", "Bisa Dipahami", "Fokus Baca", "Selesai Tepat Waktu"], 
-            feedbacks: ["Literasi kamu kuat banget, mantap! 📖", "Paham teks itu kunci nilai bagus di BIND. ✨", "Fokus adalah kekuatan utama kamu hari ini. 🎯", "Manajemen waktu yang bagus! ⏱️"] 
+            question: "Hari ini ada PJOK sama MTK. Tadi sempat olahraga apa di lapangan?", 
+            options: ["Basket/Bola", "Senam/Atletik", "Teori Saja", "Seru-seruan"], 
+            feedbacks: ["Sehat dan bugar itu penting buat otak! 🏀", "Gerak badan bikin mood jadi bagus. 🏃", "Teori juga penting buat pemahaman teknik. 📋", "Yang penting happy ya olahraganya! 😄"] 
         },
         { 
-            question: "Gimana perasaanmu setelah menyelesaikan ujian hari ini?", 
-            options: ["Lega", "Optimis", "Mau Istirahat", "Siap Belajar Lagi"], 
-            feedbacks: ["Satu beban terangkat! Selamat istirahat sejenak. 😊", "Keyakinan adalah awal dari kesuksesan! 🌟", "Rebahan dulu biar otak fresh lagi. 🛌", "Semangat belajarnya jangan kendor ya! 🔥"] 
+            question: "Gimana pelajaran MTK tadi? Angka-angkanya bikin pusing gak?", 
+            options: ["Lancar", "Agak Pusing", "Bisa Ngerjain", "Bismillah"], 
+            feedbacks: ["Logika kamu emang juara! 📐", "Gak apa-apa, MTK emang butuh proses. 🔢", "Mantap! Selesai tepat waktu ya. ✅", "Amin, yang penting sudah usaha maksimal! 🙏"] 
         }
     ],
 
-    // 3. RABU: BELAJAR DI RUMAH
+    // 3. RABU: EVALUASI TKA MINGGU LALU (BIND, BSUN, IPS, MTK)
     3: [
         { 
-            question: "Hari pertama Belajar di Rumah. Udah mulai cicil materi buat besok?", 
-            options: ["Lagi Baca", "Ngerjain Latihan", "Nonton Tutorial", "Istirahat Dulu"], 
-            feedbacks: ["Pintar! Belajar mandiri itu melatih disiplin. 📚", "Latihan soal bikin kamu makin terbiasa. ✍️", "Visualisasi materi lewat video emang lebih asik! 💻", "Jangan lupa atur waktu istirahat juga ya. 🔋"] 
+            question: "Hari Rabu nih! Ngomong-ngomong, TKA minggu kemarin menurutmu gampang atau susah?", 
+            options: ["Gampang Kok", "Lumayan Susah", "Bisa Dilewati", "Banyak Jebakan"], 
+            feedbacks: ["Keren! Berarti persiapanmu matang banget. 🏆", "Yang penting sudah usaha, hasilnya pasti terbaik. 💪", "Mantap, satu rintangan sudah terlewati! ✅", "TKA emang suka gitu, yang teliti ya lain kali. 🧐"] 
         }
     ],
 
-    // 4. KAMIS: BELAJAR DI RUMAH
+    // 4. KAMIS: IPA, PANCASILA, SBK
     4: [
         { 
-            question: "Masih semangat Belajar di Rumah? Ada kendala materi gak?", 
-            options: ["Lancar", "Tanya Teman", "Cari di Google", "Masih Paham"], 
-            feedbacks: ["Kemandirian kamu luar biasa! 🚀", "Diskusi bareng temen emang bikin cepat paham. 🗣️", "Manfaatkan teknologi buat nambah ilmu, keren! 🌐", "Pertahankan fokusnya, dikit lagi selesai! 🎯"] 
+            question: "Hari Kamis! Tadi ada Seni Budaya (SBK) kan? Garap proyek apa?", 
+            options: ["Musik", "Gambar/Seni Rupa", "Teori Seni", "Latihan Performance"], 
+            feedbacks: ["Asik! Kreativitas emang cara terbaik buat refresh otak. 🎸", "Seni itu ekspresi jiwa, keren! 🎨", "Wawasan seni itu luas banget ya. 📚", "Semangat latihannya, pasti keren hasilnya! 🎭"] 
         }
     ],
 
-    // 5. JUMAT: BELAJAR DI RUMAH & PERSIAPAN PEKAN DEPAN
+    // 5. JUMAT: YASINAN, JUMSIH, BING, BCRB
     5: [
         { 
-            question: "Jumat Berkah! Tetap produktif meski belajar dari rumah?", 
-            options: ["Iya Dong", "Agak Santai", "Fokus Review", "Siap Weekend"], 
-            feedbacks: ["Itu baru semangat murid teladan! ✨", "Santai sejenak boleh, yang penting tetap progres. ☕", "Review ulang bikin materi makin nempel di otak. 🧠", "Selamat menyambut akhir pekan setelah berjuang! 🏁"] 
+            question: "Jumat Berkah! Tadi ikut Yasinan sama Jumsih di sekolah kan?", 
+            options: ["Ikut Dong", "Bersih-bersih", "Ngaji Bareng", "Lancar Semua"], 
+            feedbacks: ["Alhamdulillah, berkah buat hari ini! ✨", "Sekolah bersih, belajar jadi nyaman. 🧹", "Hati tenang, pikiran jadi jernih. 📖", "Semangat menyambut weekend! 🏁"] 
         }
     ]
 };
 
-// Jangan lupa tambahkan module export di paling bawah agar bisa dibaca scheduler.js
 module.exports = { QUIZ_BANK };
