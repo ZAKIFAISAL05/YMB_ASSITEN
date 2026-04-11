@@ -21,7 +21,8 @@ function getClosestCommand(cmd) {
     if (commandsMap[cmd]) return commandsMap[cmd];
 
     const validCommands = [
-        'cekbot', 'list_pr', 'tugas_lama', 'bantuan', 'jadwal', 'lapor', 
+        'cekbot', 'p', 'tes', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl',
+        'bantuan', 'jadwal', 'jwl', 'lapor', 'lapor_pr',
         'update', 'update_list_pr', 'hapus', 'info', 'reset-bot', 'cek_db', 'jadwal_baru', 'update_deadline'
     ];
 
@@ -53,30 +54,32 @@ async function handleMessages(sock, m, botConfig, utils) {
         const isAdmin = ADMIN_RAW.some(admin => sender.includes(admin));
         const nonAdminMsg = "🚫 *AKSES DITOLAK*\n\nMaaf, fitur ini hanya bisa diakses oleh *Pengurus*. Kamu bisa gunakan fitur siswa seperti *!list_pr* atau *!bantuan* ya! 😊";
 
-        // Logika AI
+        // Logika AI — dicek SEBELUM filter !, tetap bisa jalan tanpa !
         if (textLower.includes('asisten')) {
             await sock.sendPresenceUpdate('composing', sender);
             const response = await askAI(body);
             return await sock.sendMessage(sender, { text: response }, { quoted: msg });
         }
 
+        // ✅ Wajib pakai ! — abaikan semua pesan tanpa prefix
+        if (!body.startsWith('!')) return;
+
         // Parsing Command
-        // ✅ FIX: args dimulai dari index 1 (setelah nama command)
         const rawParts = body.split(' ');
         const cmd = rawParts[0].toLowerCase().replace('!', '');
-        const args = rawParts.slice(1); // ← args[0] sekarang = argumen pertama, bukan nama command
+        const args = rawParts.slice(1); // ✅ args[0] = argumen pertama, bukan nama command
 
         // --- LOGIKA MENU BANTUAN ---
-        if (['bantuan', 'menu', 'help'].includes(cmd)) {
+        if (['bantuan', 'menu', 'help', 'start'].includes(cmd)) {
             let menuTeks = 
                 `✨ *MENU UTAMA SYTEAM-BOT* ✨\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
                 `Halo *${pushName}*! Berikut perintah kamu:\n\n` +
-                `📝 *pr* -> Lihat daftar PR\n` +
-                `📆 *jadwal* -> Lihat jadwal pelajaran\n` +
-                `📢 *lapor* -> Tambah/Hapus PR (Lapor Admin)\n` +
-                `⏳ *deadline* -> PR belum dikumpul\n` +
-                `⚡ *p* -> Cek status bot\n`;
+                `📝 *!pr* -> Lihat daftar PR\n` +
+                `📆 *!jadwal* -> Lihat jadwal pelajaran\n` +
+                `📢 *!lapor* -> Lapor ke Admin\n` +
+                `⏳ *!deadline* -> PR belum dikumpul\n` +
+                `⚡ *!p* -> Cek status bot\n`;
 
             if (isAdmin) {
                 menuTeks += 
@@ -105,14 +108,14 @@ async function handleMessages(sock, m, botConfig, utils) {
 
                     `⚙️ *!reset-bot*\n` +
                     `➝ Restart sistem bot\n`;
-            } 
+            }
 
-            menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Tips: Bisa ketik perintah tanpa tanda (!)_`;
+            menuTeks += `\n━━━━━━━━━━━━━━━━━━━━\n_Semua perintah wajib diawali tanda (!)_`;
             return await sock.sendMessage(sender, { text: menuTeks });
         }
 
         // --- ROUTING COMMAND ---
-        const userCmds = ['cekbot', 'p', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'tambah'];
+        const userCmds = ['cekbot', 'p', 'tes', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl', 'jadwal', 'jwl', 'lapor', 'lapor_pr'];
         const adminCmds = ['update', 'update_list_pr', 'hapus', 'info', 'reset-bot', 'cek_db', 'jadwal_baru', 'update_deadline'];
 
         if (userCmds.includes(cmd)) {
@@ -124,7 +127,7 @@ async function handleMessages(sock, m, botConfig, utils) {
             const suggestion = getClosestCommand(cmd);
             if (suggestion) {
                 return await sock.sendMessage(sender, { 
-                    text: `🧐 *PERINTAH TIDAK DIKENAL*\n━━━━━━━━━━━━━━━━━━━━\nMaksud kamu: *${suggestion}* ?\n\nKetik *menu* untuk melihat daftar perintah.` 
+                    text: `🧐 *PERINTAH TIDAK DIKENAL*\n━━━━━━━━━━━━━━━━━━━━\nMaksud kamu: *!${suggestion}* ?\n\nKetik *!bantuan* untuk melihat daftar perintah.` 
                 });
             }
         }
