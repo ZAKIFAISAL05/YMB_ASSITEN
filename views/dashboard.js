@@ -2,346 +2,445 @@
 const os = require("os");
 
 const renderDashboard = (isConnected, qrCodeData, botConfig, stats, logs, port, profilePic) => {
-    const usedRAM = ((os.totalmem() - os.freemem()) / (1024 ** 3)).toFixed(2);
+    const usedRAM = ((os.totalmem() - os.freemem()) / (1024 ** 3)).toFixed(1);
     const uptime = (os.uptime() / 3600).toFixed(1);
 
     const moodEmojis = ["😅", "🤣", "😁", "😕", "🤫", "😆", "😗", "😂"];
     const randomMood = moodEmojis[Math.floor(Math.random() * moodEmojis.length)];
 
     const quotes = [
-        "Tetap fokus, hasil tidak akan mengkhianati proses!",
+        "Tetap fokus, hasil tidak akan mengkhianati proses.",
         "Coding adalah seni, dan kamu adalah senimannya.",
         "Jangan berhenti saat lelah, berhentilah saat selesai.",
-        "Error adalah cara kode mengatakan: 'Ajari aku lebih baik'.",
-        "Jadikan hari ini lebih baik dari kemarin!",
+        "Error adalah cara kode berkata: ajari aku lebih baik.",
+        "Jadikan hari ini lebih baik dari kemarin.",
         "Satu baris kode hari ini, satu langkah menuju sukses.",
-        "Bekerja keraslah dalam diam, biarkan botmu yang berisik!"
+        "Bekerja keras dalam diam, biarkan botmu yang berisik."
     ];
     const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
 
-    // --- BAGIAN OTOMATISASI SYSTEM CONFIG ---
-    const menuButtons = Object.keys(botConfig).map(key => {
-        // Merapikan nama key (contoh: smartFeedback -> Smart Feedback)
-        const formattedName = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+    // Generate toggle buttons dari botConfig secara otomatis
+    const configButtons = Object.keys(botConfig).map(key => {
+        const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+        const isOn = botConfig[key];
         return `
-            <div class="col-6">
-                <div class="stats-card">
-                    <span style="font-size: 0.85rem; color: #8696a0;">${formattedName}</span><br>
-                    <a href="/toggle/${key}">
-                        <button class="btn btn-sm ${botConfig[key] ? 'btn-success' : 'btn-secondary'} w-100 mt-1" style="font-size: 0.7rem; font-weight: bold; border-radius: 10px;">
-                            ${botConfig[key] ? 'ON' : 'OFF'}
-                        </button>
-                    </a>
-                </div>
+            <div class="config-item">
+                <span class="config-label">${label}</span>
+                <a href="/toggle/${key}" class="pill ${isOn ? 'pill-on' : 'pill-off'}">${isOn ? 'ON' : 'OFF'}</a>
             </div>
         `;
     }).join('');
 
+    const logLines = logs.map(l => `<div>&gt; ${l}</div>`).join('');
+
     const commonHead = `
+        <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
         <style>
-            body { background: #0b141a; color: #e9edef; font-family: 'Segoe UI', sans-serif; overflow-x: hidden; }
-            
-            /* --- LOGIN STYLES --- */
-            #loginScreen {
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: radial-gradient(circle, #121d23 0%, #0b141a 100%);
-                z-index: 10000; display: flex; align-items: center; justify-content: center;
+            *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+            :root {
+                --bg: #0f172a;
+                --surface: #1e293b;
+                --surface2: #263244;
+                --border: rgba(255,255,255,0.08);
+                --green: #22c55e;
+                --green-dim: rgba(34,197,94,0.12);
+                --green-border: rgba(34,197,94,0.3);
+                --text: #f1f5f9;
+                --muted: #94a3b8;
+                --danger: #ef4444;
+                --danger-dim: rgba(239,68,68,0.12);
             }
-            .login-box {
-                background: #1f2c33; border: 1px solid #2a3942; border-radius: 40px;
-                padding: 45px 35px; width: 90%; max-width: 420px; text-align: center;
-                box-shadow: 0 30px 60px rgba(0,0,0,0.7); position: relative;
+
+            body {
+                background: var(--bg);
+                color: var(--text);
+                font-family: 'Segoe UI', system-ui, sans-serif;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 1.5rem;
             }
-            .login-avatar-area {
-                width: 120px; height: 120px; margin: 0 auto 25px;
-                position: relative; transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+            /* ── CARD ── */
+            .card {
+                background: var(--surface);
+                border: 0.5px solid var(--border);
+                border-radius: 20px;
+                padding: 2rem 1.5rem;
+                width: 100%;
+                max-width: 440px;
+            }
+
+            /* ── AVATAR ── */
+            .avatar-ring {
+                width: 80px; height: 80px; border-radius: 50%;
+                background: var(--green-dim);
+                border: 1px solid var(--green-border);
                 display: flex; align-items: center; justify-content: center;
-                background: rgba(0, 168, 132, 0.1); border: 4px solid #00a884; border-radius: 50%;
-                font-size: 65px; animation: moodSwing 5s infinite ease-in-out;
+                font-size: 38px; margin: 0 auto 1rem;
+                animation: swing 4s infinite ease-in-out;
+            }
+            @keyframes swing {
+                0%, 100% { transform: rotate(-5deg); }
+                50% { transform: rotate(5deg); }
             }
 
-            .input-container { position: relative; width: 100%; }
-            .login-input {
-                background: rgba(42, 57, 66, 0.5); border: 1px solid #3b4a54; color: white;
-                border-radius: 18px; padding: 14px 20px; width: 100%; margin-bottom: 18px; 
-                outline: none; transition: 0.3s; text-align: center;
-            }
-            .login-input:focus { border-color: #00a884; background: #2a3942; }
-
-            .toggle-eye {
-                position: absolute; right: 20px; top: 18px; color: #8696a0; cursor: pointer;
-            }
-
-            .login-btn {
-                background: #00a884; color: white; border: none; width: 100%;
-                padding: 14px; border-radius: 18px; font-weight: 800; 
-                text-transform: uppercase; letter-spacing: 2px;
-                transition: 0.4s; box-shadow: 0 10px 20px rgba(0, 168, 132, 0.3);
-            }
-            .login-btn:hover { background: #06cf9c; transform: translateY(-2px); }
-            .login-btn:disabled { background: #3b4a54; color: #8696a0; cursor: not-allowed; }
-
-            #loginStatus { font-weight: 900; font-size: 1.1rem; margin-bottom: 20px; display: none; }
-            .status-error { color: #ff5252; }
-            .status-success { color: #25d366; }
-
-            @keyframes moodSwing {
-                0% { transform: scale(1) rotate(0deg); }
-                20% { transform: scale(1.1) rotate(-8deg); }
-                40% { transform: translateX(-5px) rotate(0deg); }
-                60% { transform: translateX(5px) rotate(0deg); }
-                80% { transform: scale(1.1) rotate(8deg); }
-                100% { transform: scale(1) rotate(0deg); }
+            /* ── BRAND ── */
+            .brand { text-align: center; margin-bottom: 1.5rem; }
+            .brand h1 { font-size: 20px; font-weight: 600; letter-spacing: 1px; }
+            .brand h1 span { color: var(--green); }
+            .badge-status {
+                display: inline-block;
+                background: var(--green-dim);
+                color: var(--green);
+                font-size: 11px; padding: 3px 10px;
+                border-radius: 20px; font-weight: 500; margin-top: 6px;
             }
 
-            /* --- DASHBOARD STYLES --- */
-            .card-custom { background: #1f2c33; border: 1px solid #2a3942; border-radius: 30px; box-shadow: 0 25px 50px rgba(0,0,0,0.8); position: relative; overflow: hidden; }
-            .mood-avatar { 
-                font-size: 55px; width: 100px; height: 100px; 
-                background: rgba(0, 168, 132, 0.1); border: 3px solid #00a884; border-radius: 50%;
-                display: flex; align-items: center; justify-content: center; margin: 0 auto 12px;
-                animation: moodSwing 5s infinite ease-in-out;
+            /* ── FORM ── */
+            .field-group { margin-bottom: 1rem; position: relative; }
+            .field-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+            .field-group input {
+                width: 100%; padding: 10px 14px;
+                font-size: 14px; border-radius: 10px;
+                border: 0.5px solid var(--border);
+                background: var(--surface2);
+                color: var(--text); outline: none;
+                transition: border-color 0.2s;
             }
-            .quote-container { background: rgba(0, 168, 132, 0.08); border-left: 4px solid #00a884; padding: 15px; margin: 20px 0; border-radius: 15px; }
-            .btn-neon-pill { background: rgba(0, 168, 132, 0.05); border: 2px solid #00a884; color: #00a884; padding: 8px 30px; border-radius: 50px; font-weight: 800; cursor: pointer; text-transform: uppercase; }
-            .stats-card { background: #2a3942; border-radius: 18px; padding: 12px; text-align: center; }
-            .log-box { background: #000; color: #00ff41 !important; border-radius: 18px; height: 180px; overflow-y: auto; padding: 15px; font-family: monospace; }
-            .qr-container { background: white; padding: 15px; border-radius: 20px; display: inline-block; margin-bottom: 20px; }
-            
-            .logout-btn {
-                background: transparent; border: 1px solid #ff5252; color: #ff5252;
-                padding: 5px 15px; border-radius: 50px; font-size: 0.7rem; font-weight: bold;
-                transition: 0.3s; margin-top: 10px; cursor: pointer;
+            .field-group input:focus { border-color: var(--green-border); }
+            .eye-btn {
+                position: absolute; right: 12px; top: 33px;
+                background: none; border: none; cursor: pointer;
+                color: var(--muted); font-size: 14px; line-height: 1;
             }
-            .logout-btn:hover { background: #ff5252; color: white; }
+
+            /* ── BUTTONS ── */
+            .btn-primary {
+                width: 100%; padding: 10px; border-radius: 10px;
+                border: none; background: var(--green);
+                color: #052e16; font-size: 13px; font-weight: 600;
+                cursor: pointer; transition: opacity 0.2s; letter-spacing: 0.5px;
+            }
+            .btn-primary:hover { opacity: 0.85; }
+            .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+            .btn-danger {
+                background: none; border: 0.5px solid var(--danger);
+                color: var(--danger); padding: 5px 14px;
+                border-radius: 20px; font-size: 12px; cursor: pointer; transition: 0.2s;
+            }
+            .btn-danger:hover { background: var(--danger-dim); }
+            .btn-ghost {
+                background: none; border: 0.5px solid var(--border);
+                color: var(--muted); padding: 8px 16px;
+                border-radius: 10px; font-size: 13px; cursor: pointer;
+                width: 100%; text-align: left; display: flex;
+                justify-content: space-between; align-items: center;
+                transition: border-color 0.2s;
+            }
+            .btn-ghost:hover { border-color: rgba(255,255,255,0.2); }
+
+            /* ── ALERTS ── */
+            .alert {
+                padding: 8px 12px; border-radius: 8px;
+                font-size: 12px; margin-bottom: 1rem; display: none;
+            }
+            .alert-error { background: var(--danger-dim); color: var(--danger); }
+            .alert-success { background: var(--green-dim); color: var(--green); }
+
+            /* ── STATS ── */
+            .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-bottom: 1rem; }
+            .stat-card { background: var(--surface2); border-radius: 10px; padding: 10px 8px; text-align: center; }
+            .stat-card .val { font-size: 15px; font-weight: 600; }
+            .stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+            /* ── CONFIG ── */
+            .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; margin-bottom: 1rem; }
+            .config-item {
+                background: var(--surface2); border-radius: 10px;
+                padding: 10px 12px; display: flex;
+                align-items: center; justify-content: space-between;
+            }
+            .config-label { font-size: 12px; color: var(--muted); }
+            .pill {
+                font-size: 11px; padding: 2px 10px; border-radius: 20px;
+                font-weight: 600; cursor: pointer; border: none;
+                text-decoration: none; display: inline-block;
+            }
+            .pill-on { background: var(--green-dim); color: var(--green); }
+            .pill-off { background: var(--surface); color: var(--muted); border: 0.5px solid var(--border); }
+
+            /* ── QUOTE ── */
+            .quote-box {
+                background: var(--surface2);
+                border-left: 2px solid var(--green-border);
+                padding: 10px 14px;
+                border-radius: 0 10px 10px 0;
+                margin-bottom: 1.25rem;
+                font-size: 13px; color: var(--muted);
+                font-style: italic; line-height: 1.5;
+            }
+
+            /* ── LOG ── */
+            .log-box {
+                background: var(--surface2);
+                border: 0.5px solid var(--border);
+                border-radius: 10px; height: 140px;
+                overflow-y: auto; padding: 10px 14px;
+                font-family: 'Courier New', monospace;
+                font-size: 12px; color: var(--green);
+                line-height: 1.6; margin-bottom: 1rem;
+            }
+
+            /* ── QR ── */
+            .qr-box { background: white; padding: 16px; border-radius: 16px; display: inline-block; }
+
+            /* ── FOOTER ── */
+            .footer { text-align: center; padding-top: 1rem; border-top: 0.5px solid var(--border); }
+            .footer small { color: var(--muted); font-size: 11px; }
+            .footer .author { color: var(--green); font-weight: 600; }
+
+            .divider { height: 0.5px; background: var(--border); margin: 1rem 0; }
+            #configPanel { display: none; }
         </style>
     `;
 
+    // ──────────────────────────────────────────────
+    // HALAMAN UTAMA (setelah WhatsApp terhubung)
+    // ──────────────────────────────────────────────
     if (isConnected) {
         return `
-            <html>
-                <head><title>Y.B.M ASISTEN</title>${commonHead}</head>
-                <body class="py-4">
-                    <div id="loginScreen">
-                        <div class="login-box animate__animated animate__zoomIn">
-                            <div id="avatarArea" class="login-avatar-area">
-                                ${randomMood}
-                            </div>
-                            <h3 id="loginTitle" style="color:#fff; font-weight:900; letter-spacing:3px; margin-bottom:20px;">Y.B.M <span style="color:#00a884">ASISTEN</span></h3>
-                            
-                            <div id="loginStatus" class="animate__animated"></div>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <title>Y.B.M Asisten</title>
+    ${commonHead}
+</head>
+<body>
 
-                            <div id="loginFields">
-                                <input type="text" id="username" class="login-input" placeholder="USERNAME">
-                                <div class="input-container">
-                                    <input type="password" id="password" class="login-input" placeholder="PASSWORD">
-                                    <i class="fa-solid fa-eye-slash toggle-eye" onclick="togglePass()"></i>
-                                </div>
-                                <button id="submitBtn" onclick="attemptLogin()" class="login-btn">LOGIN</button>
-                            </div>
+    <!-- ═══ LOGIN SCREEN ═══ -->
+    <div id="loginScreen">
+        <div class="card" id="loginCard">
+            <div class="avatar-ring" id="loginAvatar">${randomMood}</div>
+            <div class="brand">
+                <h1>Y.B.M <span>Asisten</span></h1>
+            </div>
 
-                            <div id="loginLoading" style="display:none;" class="mt-3">
-                                <div class="spinner-border text-success" role="status"></div>
-                                <div class="mt-2 text-success fw-bold">AUTHENTICATING...</div>
-                            </div>
-                        </div>
-                    </div>
+            <div class="alert alert-error" id="alertBox"></div>
 
-                    <div id="mainContent" class="container" style="max-width: 480px; display:none;">
-                        <div class="card-custom p-4">
-                            <div class="text-center mb-4">
-                                <div class="mood-avatar">${randomMood}</div>
-                                <h4 style="color:#00a884; margin:0; font-weight:800; letter-spacing:2px;">Y.B.M <span style="color:#fff">ASISTEN</span></h4>
-                                <div class="badge bg-success mt-2">● ENGINE ACTIVE</div>
-                            </div>
-                            <div class="quote-container">
-                                <span class="quote-text" id="quoteText" style="font-style:italic; font-size:0.85rem;">"${randomQuote}"</span>
-                            </div>
-                            <div class="text-center mb-4">
-                                <div id="mainBtn" class="btn-neon-pill" onclick="toggleMenu()">⚙️ SYSTEM CONFIG</div>
-                            </div>
-                            
-                            <div id="layoutMenu" style="display:none;" class="row g-2 mb-3 animate__animated animate__fadeIn">
-                                ${menuButtons}
-                            </div>
+            <div id="loginFields">
+                <div class="field-group">
+                    <label>Username</label>
+                    <input type="text" id="username" placeholder="Masukkan username" autocomplete="off">
+                </div>
+                <div class="field-group">
+                    <label>Password</label>
+                    <input type="password" id="password" placeholder="Masukkan password">
+                    <button class="eye-btn" id="eyeBtn" onclick="togglePass()">👁</button>
+                </div>
+                <button class="btn-primary" id="loginBtn" onclick="attemptLogin()">Masuk</button>
+            </div>
 
-                            <div class="row g-2 text-center mb-3">
-                                <div class="col-3"><div class="stats-card"><small>RAM</small><br><b>${usedRAM}G</b></div></div>
-                                <div class="col-3"><div class="stats-card"><small>UPTIME</small><br><b>${uptime}H</b></div></div>
-                                <div class="col-3"><div class="stats-card"><small>CHAT</small><br><b>${stats.pesanMasuk}</b></div></div>
-                                <div class="col-3"><div class="stats-card"><small>LOGS</small><br><b>${stats.totalLog}</b></div></div>
-                            </div>
-                            <div class="log-box" id="logBox">${logs.join('<br>')}</div>
-                            <div class="text-center mt-4">
-                                <div class="small text-muted">CORE OPERATED BY <span class="text-success fw-bold">ZAKI</span></div>
-                                <button class="logout-btn" onclick="logoutSystem()"><i class="fa-solid fa-right-from-bracket"></i> KELUAR UNTU KEMBALI KE LOGIN</button>
-                            </div>
-                        </div>
-                    </div>
+            <div id="loginLoading" style="display:none; text-align:center; padding:1rem 0;">
+                <div style="font-size:13px; color:var(--muted);">Memverifikasi...</div>
+            </div>
+        </div>
+    </div>
 
-                    <script>
-                        let failedAttempts = 0;
-                        let isCooldown = false;
-                        const authChannel = new BroadcastChannel('auth_sync');
+    <!-- ═══ DASHBOARD SCREEN ═══ -->
+    <div id="dashScreen" style="display:none; width:100%; max-width:440px;">
+        <div class="card">
 
-                        // --- AUTO LOGIN CHECK ---
-                        window.onload = () => {
-                            if(localStorage.getItem('zaki_auth') === 'true') {
-                                showMainContent(true);
-                                authChannel.postMessage({ type: 'LOGIN_NEW', id: Math.random() });
-                            }
-                        };
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+                <div>
+                    <h1 style="font-size:18px; font-weight:600;">Y.B.M <span style="color:var(--green);">Asisten</span></h1>
+                    <div class="badge-status">● Aktif</div>
+                </div>
+                <button class="btn-danger" onclick="doLogout()">Keluar</button>
+            </div>
 
-                        // --- SINGLE DEVICE KICK SYSTEM ---
-                        authChannel.onmessage = (event) => {
-                            if(event.data.type === 'LOGIN_NEW' && localStorage.getItem('zaki_auth') === 'true') {
-                                speak("Peringatan. Perangkat lain mencoba masuk. Sesi ini dihentikan.");
-                                alert("DIVACE LAIN MASUK! ANDA MENTAL!");
-                                logoutSystem();
-                            }
-                        };
+            <div class="quote-box">${randomQuote}</div>
 
-                        function togglePass() {
-                            const p = document.getElementById('password');
-                            const icon = event.target;
-                            if(p.type === "password") {
-                                p.type = "text";
-                                icon.classList.replace('fa-eye-slash', 'fa-eye');
-                            } else {
-                                p.type = "password";
-                                icon.classList.replace('fa-eye', 'fa-eye-slash');
-                            }
-                        }
+            <div class="stats-grid">
+                <div class="stat-card"><div class="val">${usedRAM}G</div><div class="lbl">RAM</div></div>
+                <div class="stat-card"><div class="val">${uptime}J</div><div class="lbl">Uptime</div></div>
+                <div class="stat-card"><div class="val">${stats.pesanMasuk}</div><div class="lbl">Chat</div></div>
+                <div class="stat-card"><div class="val">${stats.totalLog}</div><div class="lbl">Log</div></div>
+            </div>
 
-                        function speak(msg) {
-                            window.speechSynthesis.cancel();
-                            const utterance = new SpeechSynthesisUtterance(msg);
-                            utterance.lang = 'id-ID';
-                            window.speechSynthesis.speak(utterance);
-                        }
+            <button class="btn-ghost" onclick="toggleConfig()">
+                <span>⚙ Konfigurasi sistem</span>
+                <span id="configArrow" style="font-size:11px; color:var(--muted);">tampilkan ▾</span>
+            </button>
 
-                        function attemptLogin() {
-                            if(isCooldown) return;
+            <div id="configPanel">
+                <div class="config-grid">
+                    ${configButtons}
+                </div>
+            </div>
 
-                            const u = document.getElementById('username').value;
-                            const p = document.getElementById('password').value;
-                            const status = document.getElementById('loginStatus');
-                            const fields = document.getElementById('loginFields');
-                            const loader = document.getElementById('loginLoading');
-                            const avatar = document.getElementById('avatarArea');
-                            const box = document.querySelector('.login-box');
+            <div class="divider"></div>
 
-                            if(u === "ZAKI" && p === "ZAKI_DEVELOPER_BOT") {
-                                localStorage.setItem('zaki_auth', 'true');
-                                fields.style.display = "none";
-                                loader.style.display = "block";
-                                avatar.innerText = "😉";
-                                
-                                speak("Login sukses. Silakan masuk Zaki.");
+            <div class="log-box">${logLines}</div>
 
-                                setTimeout(() => {
-                                    status.innerHTML = "ACCESS GRANTED!";
-                                    status.className = "status-success animate__animated animate__pulse";
-                                    status.style.display = "block";
-                                    
-                                    setTimeout(() => {
-                                        box.classList.add('animate__animated', 'animate__zoomOut');
-                                        setTimeout(() => {
-                                            authChannel.postMessage({ type: 'LOGIN_NEW', id: Math.random() });
-                                            showMainContent(false);
-                                        }, 500);
-                                    }, 1000);
-                                }, 1500);
-                            } else {
-                                failedAttempts++;
-                                avatar.innerText = "😡";
-                                box.classList.add('animate__shakeX');
-                                setTimeout(() => {
-                                    box.classList.remove('animate__shakeX');
-                                    if(!isCooldown) avatar.innerText = "${randomMood}";
-                                }, 500);
+            <div class="footer">
+                <small>Dioperasikan oleh <span class="author">Zaki</span></small>
+            </div>
+        </div>
+    </div>
 
-                                if(failedAttempts >= 5) {
-                                    startCooldown();
-                                } else {
-                                    status.innerHTML = "⚠️ KAMU BUKAN ZAKI! ("+failedAttempts+"/5)";
-                                    status.className = "status-error animate__animated animate__shakeX";
-                                    status.style.display = "block";
-                                    speak("Akses ditolak.");
-                                }
-                            }
-                        }
+    <script>
+        let failCount = 0;
+        let isCooldown = false;
 
-                        function showMainContent(isAuto) {
-                            document.getElementById('loginScreen').style.display = "none";
-                            const main = document.getElementById('mainContent');
-                            main.style.display = "block";
-                            main.classList.add('animate__animated', 'animate__fadeInUp');
-                            if(!isAuto) speak("Sistem Y.B.M ASISTEN aktif. " + document.getElementById('quoteText').innerText);
-                        }
+        // Auto-login jika sesi masih aktif
+        window.onload = () => {
+            if (sessionStorage.getItem('zaki_auth') === '1') {
+                showDash(true);
+            }
+            // Scroll log ke bawah
+            const lb = document.getElementById('logBox');
+            if (lb) lb.scrollTop = lb.scrollHeight;
+        };
 
-                        function logoutSystem() {
-                            localStorage.removeItem('zaki_auth');
-                            location.reload();
-                        }
+        function togglePass() {
+            const p = document.getElementById('password');
+            const btn = document.getElementById('eyeBtn');
+            if (p.type === 'password') {
+                p.type = 'text';
+                btn.textContent = '🙈';
+            } else {
+                p.type = 'password';
+                btn.textContent = '👁';
+            }
+        }
 
-                        function startCooldown() {
-                            isCooldown = true;
-                            let timeLeft = 20;
-                            const status = document.getElementById('loginStatus');
-                            const btn = document.getElementById('submitBtn');
-                            const avatar = document.getElementById('avatarArea');
+        function showAlert(msg, type) {
+            const el = document.getElementById('alertBox');
+            el.textContent = msg;
+            el.className = 'alert alert-' + type;
+            el.style.display = 'block';
+        }
 
-                            btn.disabled = true;
-                            avatar.innerText = "🤫";
-                            speak("Sistem dikunci 20 detik.");
+        function attemptLogin() {
+            if (isCooldown) return;
 
-                            const timer = setInterval(() => {
-                                status.innerHTML = "CORE LOCKED! (" + timeLeft + "s)";
-                                status.className = "status-error";
-                                status.style.display = "block";
-                                timeLeft--;
+            const u = document.getElementById('username').value.trim();
+            const p = document.getElementById('password').value;
 
-                                if(timeLeft < 0) {
-                                    clearInterval(timer);
-                                    isCooldown = false;
-                                    failedAttempts = 0;
-                                    btn.disabled = false;
-                                    status.style.display = "none";
-                                    avatar.innerText = "${randomMood}";
-                                    speak("Sistem dibuka kembali.");
-                                }
-                            }, 1000);
-                        }
+            // Catatan: validasi sebaiknya dilakukan di server, bukan client-side
+            if (u === 'ZAKI' && p === 'ZAKI_DEVELOPER_BOT') {
+                sessionStorage.setItem('zaki_auth', '1');
+                document.getElementById('loginFields').style.display = 'none';
+                document.getElementById('loginLoading').style.display = 'block';
+                document.getElementById('loginAvatar').textContent = '😄';
+                document.getElementById('alertBox').style.display = 'none';
 
-                        function toggleMenu() {
-                            const m = document.getElementById('layoutMenu');
-                            m.style.display = m.style.display === 'none' ? 'flex' : 'none';
-                        }
-                    </script>
-                </body>
-            </html>
+                setTimeout(() => showDash(false), 1200);
+
+            } else {
+                failCount++;
+                document.getElementById('loginAvatar').textContent = '😤';
+                setTimeout(() => {
+                    if (!isCooldown) document.getElementById('loginAvatar').textContent = '${randomMood}';
+                }, 600);
+
+                if (failCount >= 5) {
+                    startCooldown();
+                } else {
+                    showAlert('Username atau password salah. (' + failCount + '/5)', 'error');
+                }
+            }
+        }
+
+        function showDash(isAuto) {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('dashScreen').style.display = 'block';
+        }
+
+        function doLogout() {
+            sessionStorage.removeItem('zaki_auth');
+            location.reload();
+        }
+
+        function startCooldown() {
+            isCooldown = true;
+            let t = 20;
+            const btn = document.getElementById('loginBtn');
+            btn.disabled = true;
+            document.getElementById('loginAvatar').textContent = '🫠';
+
+            const iv = setInterval(() => {
+                showAlert('Sistem terkunci selama ' + t + ' detik...', 'error');
+                t--;
+                if (t < 0) {
+                    clearInterval(iv);
+                    isCooldown = false;
+                    failCount = 0;
+                    btn.disabled = false;
+                    document.getElementById('alertBox').style.display = 'none';
+                    document.getElementById('loginAvatar').textContent = '${randomMood}';
+                }
+            }, 1000);
+        }
+
+        function toggleConfig() {
+            const panel = document.getElementById('configPanel');
+            const arrow = document.getElementById('configArrow');
+            const open = panel.style.display === 'block';
+            panel.style.display = open ? 'none' : 'block';
+            arrow.textContent = open ? 'tampilkan ▾' : 'sembunyikan ▴';
+        }
+    </script>
+</body>
+</html>
         `;
     }
 
+    // ──────────────────────────────────────────────
+    // HALAMAN QR CODE (WhatsApp belum terhubung)
+    // ──────────────────────────────────────────────
     return `
-        <html>
-            <head><title>SCAN QR - Y.B.M ASISTEN</title>${commonHead}</head>
-            <body class="vh-100 d-flex align-items-center justify-content-center">
-                <div class="card-custom p-4 text-center animate__animated animate__fadeIn" style="max-width:400px;">
-                    <h3 style="color:#00a884; font-weight:900;">SCAN <span style="color:#fff">QR CODE</span></h3>
-                    <p class="small text-muted mb-4">Hubungkan WhatsApp kamu ke sistem</p>
-                    <div class="qr-container">
-                        ${qrCodeData ? `<img src="${qrCodeData}" width="250">` : `<div class="spinner-border text-success"></div><p class="mt-2 text-dark">Generating...</p>`}
-                    </div>
-                    <button class="btn btn-outline-light w-100 mt-3" onclick="location.reload()" style="border-radius:50px;">REFRESH PAGE</button>
-                </div>
-            </body>
-        </html>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <title>Scan QR - Y.B.M Asisten</title>
+    ${commonHead}
+</head>
+<body>
+    <div class="card" style="text-align:center; max-width:380px;">
+        <div class="avatar-ring" style="margin-bottom:1.25rem;">${randomMood}</div>
+        <div class="brand">
+            <h1>Scan <span>QR Code</span></h1>
+        </div>
+        <p style="font-size:13px; color:var(--muted); margin-bottom:1.5rem;">Hubungkan WhatsApp ke sistem</p>
+
+        <div style="margin-bottom:1.5rem;">
+            ${qrCodeData
+                ? `<div class="qr-box"><img src="${qrCodeData}" width="240" alt="QR Code WhatsApp"></div>`
+                : `<div style="padding:2rem; color:var(--muted); font-size:13px;">
+                        <div class="spinner-border text-success mb-2" role="status"></div>
+                        <div>Membuat QR code...</div>
+                   </div>`
+            }
+        </div>
+
+        <p style="font-size:12px; color:var(--muted); margin-bottom:1rem;">
+            Buka WhatsApp → Perangkat tertaut → Tautkan perangkat
+        </p>
+
+        <button class="btn-primary" onclick="location.reload()">Refresh halaman</button>
+
+        <div class="footer" style="margin-top:1.5rem;">
+            <small>Port: <strong>${port}</strong> &nbsp;|&nbsp; Dioperasikan oleh <span class="author">Zaki</span></small>
+        </div>
+    </div>
+</body>
+</html>
     `;
 };
 
