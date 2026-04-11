@@ -109,30 +109,9 @@ let sock;
 let logs = [];
 let stats = { pesanMasuk: 0, totalLog: 0 };
 
-/**
- * ROUTING STATIC & MEDIA
- * Mengatur akses file agar bisa dibuka lewat browser/web
- */
-
-// Memberikan akses publik ke folder files
-app.use('/files', express.static(PUBLIC_FILES_PATH));
-
-// Route khusus untuk menampilkan PDF dan Gambar dengan MediaView
-app.get("/tugas/:filenames", (req, res) => {
-    // Memisahkan nama file jika ada lebih dari satu (dipisah koma)
-    const filenames = req.params.filenames.split(','); 
-    
-    // Mendapatkan host secara dinamis agar link PDF tidak error
-    const protocol = req.protocol;
-    const host = req.get('host');
-    
-    // Membuat URL absolut untuk file-file tersebut
-    const fileUrls = filenames.map(name => `${protocol}://${host}/files/${name}`); 
-    
-    res.setHeader('Content-Type', 'text/html');
-    // Render tampilan menggunakan mediaView.js
-    res.send(renderMediaView(fileUrls));
-});
+// FIX: Flag agar scheduler hanya diinisialisasi SEKALI meskipun bot reconnect berkali-kali.
+// Tanpa ini, setiap reconnect menambah setInterval baru sehingga pesan terkirim duplikat.
+let schedulerInitialized = false;
 
 /**
  * LOGGING SYSTEM
@@ -168,6 +147,37 @@ app.get("/", (req, res) => {
     res.send(renderDashboard(isConnected, qrCodeData, botConfig, stats, logs, port));
 });
 
+/**
+ * ROUTING STATIC & MEDIA
+ * Mengatur akses file agar bisa dibuka lewat browser/web
+ */
+
+// Memberikan akses publik ke folder files
+app.use('/files', express.static(PUBLIC_FILES_PATH));
+
+// Route khusus untuk menampilkan PDF dan Gambar dengan MediaView
+app.get("/tugas/:filenames", (req, res) => {
+    // Memisahkan nama file jika ada lebih dari satu (dipisah koma)
+    const filenames = req.params.filenames.split(','); 
+
+    // FIX: Validasi nama file untuk mencegah path traversal attack (misal: "../../../etc/passwd")
+    const isValid = filenames.every(name => {
+        return path.basename(name) === name && !name.includes('..') && /^[\w\-. ]+$/.test(name);
+    });
+    if (!isValid) return res.status(400).send("Nama file tidak valid.");
+    
+    // Mendapatkan host secara dinamis agar link PDF tidak error
+    const protocol = req.protocol;
+    const host = req.get('host');
+    
+    // Membuat URL absolut untuk file-file tersebut
+    const fileUrls = filenames.map(name => `${protocol}://${host}/files/${name}`); 
+    
+    res.setHeader('Content-Type', 'text/html');
+    // Render tampilan menggunakan mediaView.js
+    res.send(renderMediaView(fileUrls));
+});
+
 // Menjalankan server Express
 app.listen(port, "0.0.0.0", () => {
     console.log(`✅ Web Dashboard aktif di port ${port}`);
@@ -178,75 +188,91 @@ app.listen(port, "0.0.0.0", () => {
  * Fungsi utama untuk menghubungkan ke WhatsApp menggunakan Baileys
  */
 async function start() {
-    const { version } = await fetchLatestBaileysVersion();
-    const { state, saveCreds } = await useMultiFileAuthState(VOLUME_PATH);
+    try {
+        const { version } = await fetchLatestBaileysVersion();
+        const { state, saveCreds } = await useMultiFileAuthState(VOLUME_PATH);
 
-    // Konfigurasi koneksi socket
-    sock = makeWASocket({
-        version,
-        auth: { 
-            creds: state.creds, 
-            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
-        },
-        printQRInTerminal: false,
-        logger: pino({ level: "silent" }),
-        browser: ["Syteam-Bot", "Chrome", "1.0.0"],
-        syncFullHistory: false // Menghemat RAM dengan tidak mensinkronisasi chat lama
-    });
+        // Konfigurasi koneksi socket
+        sock = makeWASocket({
+            version,
+            auth: { 
+                creds: state.creds, 
+                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
+            },
+            printQRInTerminal: false,
+            logger: pino({ level: "silent" }),
+            browser: ["Syteam-Bot", "Chrome", "1.0.0"],
+            syncFullHistory: false // Menghemat RAM dengan tidak mensinkronisasi chat lama
+        });
 
-    // Simpan kredensial login setiap kali ada perubahan
-    sock.ev.on("creds.update", saveCreds);
+        // Simpan kredensial login setiap kali ada perubahan
+        sock.ev.on("creds.update", saveCreds);
 
-    // Menangani update status koneksi (Terhubung/Putus)
-    sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        // Jika ada QR Code baru, konversi ke base64 untuk Dashboard
-        if (qr) qrCodeData = await QRCode.toDataURL(qr);
-        
-        if (connection === "close") {
-            isConnected = false;
-            // Cek apakah harus mencoba menghubungkan ulang atau tidak
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) {
-                addLog("🔴 Koneksi terputus, mencoba menyambung ulang...");
-                setTimeout(start, 5000); // Tunggu 5 detik sebelum mencoba lagi
-            } else {
-                addLog("⚠️ Bot Logout. Silakan scan ulang QR Code.");
+        // Menangani update status koneksi (Terhubung/Putus)
+        sock.ev.on("connection.update", async (update) => {
+            const { connection, lastDisconnect, qr } = update;
+            
+            // Jika ada QR Code baru, konversi ke base64 untuk Dashboard
+            if (qr) qrCodeData = await QRCode.toDataURL(qr);
+            
+            if (connection === "close") {
+                isConnected = false;
+                // Cek apakah harus mencoba menghubungkan ulang atau tidak
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                if (shouldReconnect) {
+                    addLog("🔴 Koneksi terputus, mencoba menyambung ulang...");
+                    setTimeout(start, 5000); // Tunggu 5 detik sebelum mencoba lagi
+                } else {
+                    addLog("⚠️ Bot Logout. Silakan scan ulang QR Code.");
+                    // Reset flag agar scheduler bisa diinisialisasi ulang setelah login baru
+                    schedulerInitialized = false;
+                }
+            } else if (connection === "open") {
+                isConnected = true; 
+                qrCodeData = ""; // Hapus QR data karena sudah terhubung
+                addLog("🟢 Bot Berhasil Terhubung ke WhatsApp!");
+                
+                // FIX: Hanya inisialisasi scheduler SEKALI.
+                // Tanpa pengecekan ini, setiap reconnect akan menambah setInterval baru
+                // sehingga pesan bisa terkirim berkali-kali di jam yang sama.
+                if (!schedulerInitialized) {
+                    initQuizScheduler(sock, botConfig); 
+                    initJadwalBesokScheduler(sock, botConfig);
+                    initSmartFeedbackScheduler(sock, botConfig);
+                    initListPrMingguanScheduler(sock, botConfig);
+                    initSahurScheduler(sock, botConfig);
+                    schedulerInitialized = true;
+                }
             }
-        } else if (connection === "open") {
-            isConnected = true; 
-            qrCodeData = ""; // Hapus QR data karena sudah terhubung
-            addLog("🟢 Bot Berhasil Terhubung ke WhatsApp!");
-            
-            // Inisialisasi semua penjadwalan otomatis
-            initQuizScheduler(sock, botConfig); 
-            initJadwalBesokScheduler(sock, botConfig);
-            initSmartFeedbackScheduler(sock, botConfig);
-            initListPrMingguanScheduler(sock, botConfig);
-            initSahurScheduler(sock, botConfig);
-        }
-    });
+        });
 
-    // Menangani pesan masuk
-    sock.ev.on("messages.upsert", async (m) => {
-        if (m.type === 'notify') {
-            const msg = m.messages[0];
-            
-            // Validasi: Abaikan pesan kosong atau pesan dari bot sendiri
-            if (!msg.message || msg.key.fromMe) return;
-            
-            stats.pesanMasuk++;
-            const senderName = msg.pushName || 'User';
-            addLog(`📩 Pesan masuk dari: ${senderName}`);
-            
-            // Teruskan pesan ke file handler.js untuk diproses
-            await handleMessages(sock, m, botConfig, { 
-                getWeekDates, 
-                sendJadwalBesokManual 
-            });
-        }
-    });
+        // Menangani pesan masuk
+        sock.ev.on("messages.upsert", async (m) => {
+            if (m.type === 'notify') {
+                const msg = m.messages[0];
+                
+                // Validasi: Abaikan pesan kosong atau pesan dari bot sendiri
+                if (!msg.message || msg.key.fromMe) return;
+                
+                stats.pesanMasuk++;
+                const senderName = msg.pushName || 'User';
+                addLog(`📩 Pesan masuk dari: ${senderName}`);
+                
+                // Teruskan pesan ke file handler.js untuk diproses
+                await handleMessages(sock, m, botConfig, { 
+                    getWeekDates, 
+                    sendJadwalBesokManual 
+                });
+            }
+        });
+
+    } catch (err) {
+        // FIX: Tangkap error saat startup (misalnya gagal fetch versi Baileys karena network)
+        // agar bot tidak crash total, melainkan retry otomatis
+        console.error("❌ Gagal memulai bot:", err.message);
+        addLog("❌ Gagal memulai bot, mencoba lagi dalam 10 detik...");
+        setTimeout(start, 10000);
+    }
 }
 
 /**
