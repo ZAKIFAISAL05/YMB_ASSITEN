@@ -40,7 +40,13 @@ async function handleMessages(sock, m, botConfig, utils) {
 
         const sender = msg.key.remoteJid;
         const pushName = msg.pushName || 'User';
-        const body = (msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.documentMessage?.caption || "").trim();
+        const body = (
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text ||
+            msg.message.imageMessage?.caption ||
+            msg.message.documentMessage?.caption ||
+            ""
+        ).trim();
         if (!body) return;
 
         const textLower = body.toLowerCase();
@@ -55,8 +61,10 @@ async function handleMessages(sock, m, botConfig, utils) {
         }
 
         // Parsing Command
-        const args = body.split(' ');
-        const cmd = args[0].toLowerCase().replace('!', '');
+        // ✅ FIX: args dimulai dari index 1 (setelah nama command)
+        const rawParts = body.split(' ');
+        const cmd = rawParts[0].toLowerCase().replace('!', '');
+        const args = rawParts.slice(1); // ← args[0] sekarang = argumen pertama, bukan nama command
 
         // --- LOGIKA MENU BANTUAN ---
         if (['bantuan', 'menu', 'help'].includes(cmd)) {
