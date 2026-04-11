@@ -6,32 +6,43 @@ const fs = require('fs');
 // Daftar ID Admin
 const ADMIN_RAW = ['6289531549103', '171425214255294', '6285158738155', '241849843351688', '254326740103190', '8474121494667']; 
 
+// Hitung jarak Levenshtein antara dua string
+function levenshtein(a, b) {
+    const dp = Array.from({ length: a.length + 1 }, (_, i) =>
+        Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+            dp[i][j] = a[i - 1] === b[j - 1]
+                ? dp[i - 1][j - 1]
+                : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+        }
+    }
+    return dp[a.length][b.length];
+}
+
+// Semua command valid (alias + utama)
+const ALL_VALID_COMMANDS = [
+    'cekbot', 'p', 'tes', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl',
+    'bantuan', 'menu', 'help', 'start', 'jadwal', 'jwl', 'lapor', 'lapor_pr',
+    'update', 'update_list_pr', 'hapus', 'info', 'reset-bot', 'cek_db', 'jadwal_baru', 'update_deadline'
+];
+
 function getClosestCommand(cmd) {
-    const commandsMap = {
-        'menu': 'bantuan',
-        'p': 'cekbot',
-        'pr': 'list_pr',
-        'deadline': 'tugas_lama',
-        'dl': 'tugas_lama',
-        'add': 'lapor',
-        'tambah': 'lapor',
-        'jwl': 'jadwal'
-    };
+    let bestMatch = null;
+    let bestScore = Infinity;
 
-    if (commandsMap[cmd]) return commandsMap[cmd];
+    for (const valid of ALL_VALID_COMMANDS) {
+        const dist = levenshtein(cmd, valid);
+        // Threshold: max 3 karakter beda, atau 40% panjang command
+        const threshold = Math.max(2, Math.floor(valid.length * 0.4));
+        if (dist < bestScore && dist <= threshold) {
+            bestScore = dist;
+            bestMatch = valid;
+        }
+    }
 
-    const validCommands = [
-        'cekbot', 'p', 'tes', 'list_pr', 'pr', 'tugas_lama', 'deadline', 'dl',
-        'bantuan', 'jadwal', 'jwl', 'lapor', 'lapor_pr',
-        'update', 'update_list_pr', 'hapus', 'info', 'reset-bot', 'cek_db', 'jadwal_baru', 'update_deadline'
-    ];
-
-    if (validCommands.includes(cmd)) return null;
-
-    return validCommands.find(v => {
-        const distance = Math.abs(v.length - cmd.length);
-        return distance <= 2 && (v.startsWith(cmd.substring(0, 3)) || cmd.startsWith(v.substring(0, 3)));
-    });
+    return bestMatch;
 }
 
 async function handleMessages(sock, m, botConfig, utils) {
@@ -67,7 +78,7 @@ async function handleMessages(sock, m, botConfig, utils) {
         // Parsing Command
         const rawParts = body.split(' ');
         const cmd = rawParts[0].toLowerCase().replace('!', '');
-        const args = rawParts.slice(1); // ✅ args[0] = argumen pertama, bukan nama command
+        const args = rawParts.slice(1);
 
         // --- LOGIKA MENU BANTUAN ---
         if (['bantuan', 'menu', 'help', 'start'].includes(cmd)) {
@@ -124,12 +135,17 @@ async function handleMessages(sock, m, botConfig, utils) {
             if (!isAdmin) return await sock.sendMessage(sender, { text: nonAdminMsg });
             await handleAdminCommands(sock, msg, '!' + cmd, args, utils, body, nonAdminMsg);
         } else {
+            // ✅ Typo detection pakai Levenshtein Distance
             const suggestion = getClosestCommand(cmd);
             if (suggestion) {
                 return await sock.sendMessage(sender, { 
-                    text: `🧐 *PERINTAH TIDAK DIKENAL*\n━━━━━━━━━━━━━━━━━━━━\nMaksud kamu: *!${suggestion}* ?\n\nKetik *!bantuan* untuk melihat daftar perintah.` 
+                    text: `🤔 *Perintah Tidak Dikenal!*\n━━━━━━━━━━━━━━━━━━━━\n` +
+                          `Kamu ketik: *!${cmd}*\n` +
+                          `Maksud kamu: *!${suggestion}* ?\n\n` +
+                          `Ketik *!bantuan* untuk lihat semua perintah. 😊`
                 });
             }
+            // Kalau beda jauh banget, diam aja (bukan typo, mungkin obrolan biasa pake !)
         }
 
     } catch (err) { 
