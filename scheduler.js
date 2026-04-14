@@ -69,6 +69,11 @@ function isJamKirim(jam, menit, targetJam) {
     return jam === targetJam && menit <= 1;
 }
 
+// FIX: Cek apakah koneksi WA siap sebelum kirim pesan
+function isConnected(sock) {
+    return sock && sock.user;
+}
+
 // --- SAHUR ---
 async function initSahurScheduler(sock, botConfig) {
     console.log("✅ Scheduler Sahur Aktif (04:00 WIB)");
@@ -82,6 +87,7 @@ async function initSahurScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.sahur === false) return;
+        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const tglID = `sahur-${now.getDate()}-${now.getMonth()}`;
         const lastSent = readLastSent();
@@ -91,7 +97,7 @@ async function initSahurScheduler(sock, botConfig) {
                 const pesanRandom = PESAN_SAHUR_LIST[Math.floor(Math.random() * PESAN_SAHUR_LIST.length)];
                 await sock.sendMessage(ID_GRUP_TUJUAN, { text: pesanRandom });
                 writeLastSent({ ...lastSent, [tglID]: true });
-            } catch (err) { console.error("Sahur Error:", err); }
+            } catch (err) { console.error("Sahur Error:", err.message); }
         }
     }, 35000);
 }
@@ -102,6 +108,7 @@ async function initQuizScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.quiz === false) return;
+        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const jam = now.getHours();
         const menit = now.getMinutes();
@@ -141,7 +148,7 @@ async function initQuizScheduler(sock, botConfig) {
                         writeLastSent({ ...lastSent, [tglID]: true });
                     }
                 }
-            } catch (err) { console.error("Quiz Error:", err); }
+            } catch (err) { console.error("Quiz Error:", err.message); }
         }
     }, 35000);
 }
@@ -153,6 +160,7 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.smartFeedback === false) return;
+        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
 
         let kuisAktif = {};
         if (fs.existsSync(KUIS_PATH)) {
@@ -225,7 +233,7 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
                     await sock.sendMessage(ID_GRUP_TUJUAN, { text: teksHasil });
                     if (fs.existsSync(KUIS_PATH)) fs.unlinkSync(KUIS_PATH);
                 }
-            } catch (err) { console.error("Feedback Error:", err); }
+            } catch (err) { console.error("Feedback Error:", err.message); }
         }
     }, 35000);
 }
@@ -236,6 +244,7 @@ async function initJadwalBesokScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.jadwalBesok === false) return;
+        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const tglID = `jadwal-${now.getDate()}-${now.getMonth()}`;
         const lastSent = readLastSent();
@@ -253,6 +262,7 @@ async function initListPrMingguanScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.prMingguan === false) return;
+        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const hariIni = now.getDay();
         const tglID = `pr-${now.getDate()}-${now.getMonth()}`;
@@ -288,7 +298,7 @@ async function initListPrMingguanScheduler(sock, botConfig) {
 
                 await sock.sendMessage(ID_GRUP_TUJUAN, { text: teksPesan });
                 writeLastSent({ ...lastSent, [tglID]: true });
-            } catch (err) { console.error("List PR Mingguan Error:", err); }
+            } catch (err) { console.error("List PR Mingguan Error:", err.message); }
         }
     }, 35000);
 }
@@ -296,6 +306,12 @@ async function initListPrMingguanScheduler(sock, botConfig) {
 // --- KIRIM JADWAL BESOK MANUAL ---
 async function sendJadwalBesokManual(sock, targetJid) {
     try {
+        // FIX: Cek koneksi sebelum kirim, jangan lanjut jika WA belum connected
+        if (!isConnected(sock)) {
+            console.error("Jadwal Manual Error: Koneksi WA belum siap, pengiriman dibatalkan.");
+            return;
+        }
+
         const now = getWIBDate();
         const hariIni = now.getDay();
 
@@ -347,7 +363,7 @@ async function sendJadwalBesokManual(sock, targetJid) {
 
         const formatPesan = `🚀 *PERSIAPAN JADWAL BESOK*\n📅 *${dayLabels[hariBesok].toUpperCase()}, ${tglBesok}*\n━━━━━━━━━━━━━━━━━━━━\n\n${jadwalFinal}\n\n━━━━━━━━━━━━━━━━━━━━\n💡 _"${motivasi}"_\n\n*Tetap semangat ya!* 😇`;
         await sock.sendMessage(targetJid || ID_GRUP_TUJUAN, { text: formatPesan });
-    } catch (err) { console.error("Jadwal Manual Error:", err); }
+    } catch (err) { console.error("Jadwal Manual Error:", err.message); }
 }
 
 module.exports = {
