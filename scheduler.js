@@ -69,9 +69,21 @@ function isJamKirim(jam, menit, targetJam) {
     return jam === targetJam && menit <= 1;
 }
 
-// FIX: Cek apakah koneksi WA siap sebelum kirim pesan
-function isConnected(sock) {
-    return sock && sock.user;
+// FIX: Tunggu sampai koneksi WA siap, retry tiap 10 detik maksimal 5 menit
+async function waitUntilConnected(sock, label = '') {
+    const maxWait = 5 * 60 * 1000; // 5 menit
+    const interval = 10 * 1000;    // cek tiap 10 detik
+    let elapsed = 0;
+    while (!(sock && sock.user)) {
+        if (elapsed >= maxWait) {
+            console.error(`[${label}] Koneksi WA tidak kunjung siap setelah 5 menit, dibatalkan.`);
+            return false;
+        }
+        console.log(`[${label}] Menunggu koneksi WA... (${elapsed / 1000}s)`);
+        await new Promise(r => setTimeout(r, interval));
+        elapsed += interval;
+    }
+    return true;
 }
 
 // --- SAHUR ---
@@ -87,13 +99,14 @@ async function initSahurScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.sahur === false) return;
-        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const tglID = `sahur-${now.getDate()}-${now.getMonth()}`;
         const lastSent = readLastSent();
 
         if (isJamKirim(now.getHours(), now.getMinutes(), 4) && lastSent[tglID] !== true) {
             try {
+                const siap = await waitUntilConnected(sock, 'Sahur');
+                if (!siap) return;
                 const pesanRandom = PESAN_SAHUR_LIST[Math.floor(Math.random() * PESAN_SAHUR_LIST.length)];
                 await sock.sendMessage(ID_GRUP_TUJUAN, { text: pesanRandom });
                 writeLastSent({ ...lastSent, [tglID]: true });
@@ -108,7 +121,6 @@ async function initQuizScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.quiz === false) return;
-        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const jam = now.getHours();
         const menit = now.getMinutes();
@@ -124,6 +136,8 @@ async function initQuizScheduler(sock, botConfig) {
 
         if (isJamKirim(jam, menit, jamKirim) && lastSent[tglID] !== true) {
             try {
+                const siap = await waitUntilConnected(sock, 'Quiz');
+                if (!siap) return;
                 const kuisHariIni = QUIZ_BANK[hariAngka.toString()];
                 if (kuisHariIni && kuisHariIni.length > 0) {
                     const randomQuiz = kuisHariIni[Math.floor(Math.random() * kuisHariIni.length)];
@@ -160,7 +174,6 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.smartFeedback === false) return;
-        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
 
         let kuisAktif = {};
         if (fs.existsSync(KUIS_PATH)) {
@@ -181,6 +194,8 @@ async function initSmartFeedbackScheduler(sock, botConfig) {
             lastProcessedId !== kuisAktif.msgId
         ) {
             try {
+                const siap = await waitUntilConnected(sock, 'SmartFeedback');
+                if (!siap) return;
                 const votesArray = Object.values(kuisAktif.votes || {});
 
                 // FIX: Poll Baileys menyimpan nama opsi sebagai string, bukan index angka.
@@ -244,7 +259,6 @@ async function initJadwalBesokScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.jadwalBesok === false) return;
-        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const tglID = `jadwal-${now.getDate()}-${now.getMonth()}`;
         const lastSent = readLastSent();
@@ -262,7 +276,6 @@ async function initListPrMingguanScheduler(sock, botConfig) {
 
     setInterval(async () => {
         if (!botConfig || botConfig.prMingguan === false) return;
-        if (!isConnected(sock)) return; // FIX: skip jika koneksi belum siap
         const now = getWIBDate();
         const hariIni = now.getDay();
         const tglID = `pr-${now.getDate()}-${now.getMonth()}`;
@@ -270,6 +283,8 @@ async function initListPrMingguanScheduler(sock, botConfig) {
 
         if (hariIni === 6 && isJamKirim(now.getHours(), now.getMinutes(), 10) && lastSent[tglID] !== true) {
             try {
+                const siap = await waitUntilConnected(sock, 'PRMingguan');
+                if (!siap) return;
                 const statusLibur = await isTanggalMerah();
                 if (statusLibur) {
                     console.log(`[PR] Hari libur nasional. Bot tidak mengirim list PR.`);
@@ -306,11 +321,9 @@ async function initListPrMingguanScheduler(sock, botConfig) {
 // --- KIRIM JADWAL BESOK MANUAL ---
 async function sendJadwalBesokManual(sock, targetJid) {
     try {
-        // FIX: Cek koneksi sebelum kirim, jangan lanjut jika WA belum connected
-        if (!isConnected(sock)) {
-            console.error("Jadwal Manual Error: Koneksi WA belum siap, pengiriman dibatalkan.");
-            return;
-        }
+        // FIX: Tunggu sampai koneksi WA siap, jangan langsung batalkan
+        const siap = await waitUntilConnected(sock, 'JadwalManual');
+        if (!siap) return;
 
         const now = getWIBDate();
         const hariIni = now.getDay();
