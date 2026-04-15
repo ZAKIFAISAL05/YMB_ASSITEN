@@ -185,7 +185,7 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
         }
 
-        case '!info': {
+         case '!info': {
             const infoMsgText = body.slice(6).trim();
             const isImageInfo = msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
             const isDocInfo = msg.message?.documentMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.documentMessage;
@@ -215,6 +215,7 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             }
             break;
         }
+
 
         case '!hapus': {
             const targetHapus = bodyParts[1]?.toLowerCase();
