@@ -225,7 +225,7 @@ async function start() {
             },
             printQRInTerminal: false,
             logger: pino({ level: "silent" }),
-            browser: ["Syteam-Bot", "Chrome", "1.0.0"],
+            browser: ["Ubuntu", "Firefox", "20.0.0"],
             syncFullHistory: false,
 
             // FIX #4: Opsi koneksi tambahan agar tidak mudah timeout di grup
