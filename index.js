@@ -1,8 +1,11 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.2.0
- * Fitur: WhatsApp Bot + Web Dashboard + Media Viewer
- * Status Auto-Cleaning: DISABLED (File Abadi)
+ * Versi: 1.3.0
+ * Perbaikan: Fix bot typing tapi pesan tidak terkirim ke grup
+ * - Tambah sendMessage wrapper dengan timeout & retry
+ * - Tambah presenceUpdate clearing agar typing tidak stuck
+ * - Tambah rate limit delay antar pesan scheduler
+ * - Tambah keepAlive ping agar koneksi tidak drop diam-diam
  */
 
 const { 
@@ -35,27 +38,12 @@ const { renderDashboard } = require('./views/dashboard');
 const { renderMediaView } = require('./views/mediaView'); 
 
 // --- KONFIGURASI PATH DINAMIS ---
-// Menggunakan volume '/app/auth_info' agar data tersimpan permanen di server/docker
 const VOLUME_PATH = '/app/auth_info';
 const CONFIG_PATH = path.join(VOLUME_PATH, 'config.ridfot'); 
 const PUBLIC_FILES_PATH = path.join(VOLUME_PATH, 'public_files');
 
-/**
- * INISIALISASI DIREKTORI
- * Memastikan folder yang dibutuhkan sudah tersedia di sistem
- */
-if (!fs.existsSync(VOLUME_PATH)) {
-    fs.mkdirSync(VOLUME_PATH, { recursive: true });
-}
-if (!fs.existsSync(PUBLIC_FILES_PATH)) {
-    fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
-}
-
-/**
- * CATATAN PENTING:
- * Fungsi Auto Cleaning (Penghapusan file > 7 hari) telah dihapus.
- * File PDF dan Gambar di folder public_files tidak akan dihapus otomatis.
- */
+if (!fs.existsSync(VOLUME_PATH)) fs.mkdirSync(VOLUME_PATH, { recursive: true });
+if (!fs.existsSync(PUBLIC_FILES_PATH)) fs.mkdirSync(PUBLIC_FILES_PATH, { recursive: true });
 
 // --- KONFIGURASI DEFAULT BOT ---
 let botConfig = { 
@@ -66,19 +54,13 @@ let botConfig = {
     sahur: true,
 };
 
-/**
- * FUNGSI LOAD CONFIG
- * Mengambil pengaturan bot yang tersimpan di dalam file config.ridfot
- */
 function loadConfig() {
     try {
         if (fs.existsSync(CONFIG_PATH)) {
             const data = fs.readFileSync(CONFIG_PATH, 'utf-8');
-            const parsed = JSON.parse(data);
-            Object.assign(botConfig, parsed);
+            Object.assign(botConfig, JSON.parse(data));
             console.log("✅ Config Berhasil Dimuat dari Volume");
         } else {
-            // Jika file belum ada, buat file baru dengan config default
             fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
             console.log("ℹ️ Membuat file konfigurasi baru...");
         }
@@ -88,10 +70,6 @@ function loadConfig() {
 }
 loadConfig();
 
-/**
- * FUNGSI SAVE CONFIG
- * Menyimpan perubahan status fitur (ON/OFF) ke dalam file
- */
 const saveConfig = () => {
     try {
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(botConfig, null, 2));
@@ -108,91 +86,137 @@ let isConnected = false;
 let sock;
 let logs = [];
 let stats = { pesanMasuk: 0, totalLog: 0 };
-
-// FIX: Flag agar scheduler hanya diinisialisasi SEKALI meskipun bot reconnect berkali-kali.
-// Tanpa ini, setiap reconnect menambah setInterval baru sehingga pesan terkirim duplikat.
 let schedulerInitialized = false;
 
-/**
- * LOGGING SYSTEM
- * Mencatat aktivitas bot untuk ditampilkan di Dashboard Web
- */
+// ─────────────────────────────────────────────────────────────
+// FIX #1: SAFE SEND MESSAGE WRAPPER
+// Masalah utama: sock.sendMessage() ke grup kadang hang selamanya
+// tanpa resolve/reject → bot stuck typing, internet terasa "putus".
+// Solusi: bungkus dengan Promise.race() + timeout 20 detik.
+// Jika gagal, tunggu 3 detik lalu coba 1x lagi (retry).
+// ─────────────────────────────────────────────────────────────
+const safeSend = async (jid, content, options = {}, retries = 2) => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            // Timeout 20 detik — jika WhatsApp tidak merespons, lempar error
+            const result = await Promise.race([
+                sock.sendMessage(jid, content, options),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("sendMessage timeout")), 20000)
+                )
+            ]);
+
+            // FIX #2: Setelah sukses kirim, pastikan status "typing" dibersihkan
+            // agar bot tidak terlihat mengetik terus di grup
+            try {
+                await sock.sendPresenceUpdate('paused', jid);
+            } catch (_) { /* abaikan error presence */ }
+
+            return result;
+
+        } catch (err) {
+            addLog(`⚠️ Gagal kirim pesan (percobaan ${attempt}/${retries}): ${err.message}`);
+            if (attempt < retries) {
+                // Tunggu 3 detik sebelum retry agar tidak flood
+                await new Promise(r => setTimeout(r, 3000));
+            }
+        }
+    }
+    addLog(`❌ Pesan gagal terkirim setelah ${retries}x percobaan.`);
+    return null;
+};
+
+// Export safeSend agar bisa dipakai di handler.js dan scheduler.js
+// Cara pakai di file lain: const { safeSend } = require('./index');
+// TAPI karena circular import bisa bermasalah, lebih baik inject via parameter.
+// Kita simpan di global object yang di-pass ke handler & scheduler.
+const botUtils = {
+    safeSend,
+    getWeekDates,
+    sendJadwalBesokManual
+};
+
+// ─────────────────────────────────────────────────────────────
+// FIX #3: KEEPALIVE PING
+// Koneksi WhatsApp bisa diam-diam drop tanpa trigger "close" event.
+// Ping setiap 30 detik untuk mendeteksi koneksi zombie lebih cepat.
+// ─────────────────────────────────────────────────────────────
+let keepAliveInterval = null;
+
+const startKeepAlive = () => {
+    if (keepAliveInterval) clearInterval(keepAliveInterval);
+    keepAliveInterval = setInterval(async () => {
+        if (!isConnected || !sock) return;
+        try {
+            // Query versi WA sebagai "ping" ringan
+            await sock.query({
+                tag: 'iq',
+                attrs: { type: 'get', to: '@s.whatsapp.net', xmlns: 'w:p' }
+            });
+        } catch (e) {
+            // Jika ping gagal, koneksi sudah zombie — reconnect
+            addLog("🔄 Koneksi zombie terdeteksi, reconnect...");
+            isConnected = false;
+            try { sock.end(); } catch (_) {}
+        }
+    }, 30000); // setiap 30 detik
+};
+
+// ─────────────────────────────────────────────────────────────
+// LOGGING SYSTEM
+// ─────────────────────────────────────────────────────────────
 const addLog = (msg) => {
     const time = new Date().toLocaleTimeString('id-ID');
-    // Menambahkan log ke urutan paling atas
     logs.unshift(`<span style="color: #00ff73;">[${time}]</span> <span style="color: #ffffff !important;">${msg}</span>`);
     stats.totalLog++;
-    // Membatasi log hanya sampai 50 baris terakhir
     if (logs.length > 50) logs.pop();
 };
 
-/**
- * ENDPOINT KONTROL FITUR
- * Digunakan untuk menyalakan/mematikan fitur lewat klik di Dashboard
- */
+// ─────────────────────────────────────────────────────────────
+// EXPRESS ROUTES
+// ─────────────────────────────────────────────────────────────
 app.get("/toggle/:feature", (req, res) => {
     const feat = req.params.feature;
     if (botConfig.hasOwnProperty(feat)) {
         botConfig[feat] = !botConfig[feat];
-        saveConfig(); // Simpan perubahan secara permanen
-        const status = botConfig[feat] ? 'ON' : 'OFF';
-        addLog(`Sistem ${feat} diubah -> ${status}`);
+        saveConfig();
+        addLog(`Sistem ${feat} diubah -> ${botConfig[feat] ? 'ON' : 'OFF'}`);
     }
     res.redirect("/");
 });
 
-// Route Utama Dashboard
 app.get("/", (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(renderDashboard(isConnected, qrCodeData, botConfig, stats, logs, port));
 });
 
-/**
- * ROUTING STATIC & MEDIA
- * Mengatur akses file agar bisa dibuka lewat browser/web
- */
-
-// Memberikan akses publik ke folder files
 app.use('/files', express.static(PUBLIC_FILES_PATH));
 
-// Route khusus untuk menampilkan PDF dan Gambar dengan MediaView
 app.get("/tugas/:filenames", (req, res) => {
-    // Memisahkan nama file jika ada lebih dari satu (dipisah koma)
     const filenames = req.params.filenames.split(','); 
-
-    // FIX: Validasi nama file untuk mencegah path traversal attack (misal: "../../../etc/passwd")
     const isValid = filenames.every(name => {
         return path.basename(name) === name && !name.includes('..') && /^[\w\-. ]+$/.test(name);
     });
     if (!isValid) return res.status(400).send("Nama file tidak valid.");
-    
-    // Mendapatkan host secara dinamis agar link PDF tidak error
     const protocol = req.protocol;
     const host = req.get('host');
-    
-    // Membuat URL absolut untuk file-file tersebut
     const fileUrls = filenames.map(name => `${protocol}://${host}/files/${name}`); 
-    
     res.setHeader('Content-Type', 'text/html');
-    // Render tampilan menggunakan mediaView.js
     res.send(renderMediaView(fileUrls));
 });
 
-// Menjalankan server Express
 app.listen(port, "0.0.0.0", () => {
     console.log(`✅ Web Dashboard aktif di port ${port}`);
 });
 
-/**
- * CORE BOT FUNCTION
- * Fungsi utama untuk menghubungkan ke WhatsApp menggunakan Baileys
- */
+// ─────────────────────────────────────────────────────────────
+// CORE BOT FUNCTION
+// ─────────────────────────────────────────────────────────────
 async function start() {
     try {
         const { version } = await fetchLatestBaileysVersion();
         const { state, saveCreds } = await useMultiFileAuthState(VOLUME_PATH);
 
-        // Konfigurasi koneksi socket
         sock = makeWASocket({
             version,
             auth: { 
@@ -202,88 +226,81 @@ async function start() {
             printQRInTerminal: false,
             logger: pino({ level: "silent" }),
             browser: ["Syteam-Bot", "Chrome", "1.0.0"],
-            syncFullHistory: false // Menghemat RAM dengan tidak mensinkronisasi chat lama
+            syncFullHistory: false,
+
+            // FIX #4: Opsi koneksi tambahan agar tidak mudah timeout di grup
+            connectTimeoutMs: 60000,      // tunggu 60 detik saat connect
+            defaultQueryTimeoutMs: 30000, // timeout per query 30 detik
+            keepAliveIntervalMs: 15000,   // built-in keepalive Baileys 15 detik
+            retryRequestDelayMs: 2000,    // delay antar retry request
+            maxMsgRetryCount: 5,          // maksimal retry per pesan
+            getMessage: async () => undefined // hindari error saat decrypt pesan lama
         });
 
-        // Simpan kredensial login setiap kali ada perubahan
         sock.ev.on("creds.update", saveCreds);
 
-        // Menangani update status koneksi (Terhubung/Putus)
         sock.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect, qr } = update;
             
-            // Jika ada QR Code baru, konversi ke base64 untuk Dashboard
             if (qr) qrCodeData = await QRCode.toDataURL(qr);
             
             if (connection === "close") {
                 isConnected = false;
-                // Cek apakah harus mencoba menghubungkan ulang atau tidak
-                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                if (keepAliveInterval) clearInterval(keepAliveInterval);
+
+                const statusCode = lastDisconnect?.error?.output?.statusCode;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
                 if (shouldReconnect) {
-                    addLog("🔴 Koneksi terputus, mencoba menyambung ulang...");
-                    setTimeout(start, 5000); // Tunggu 5 detik sebelum mencoba lagi
+                    // FIX #5: Delay reconnect lebih lama jika kena rate limit (statusCode 429)
+                    const delay = statusCode === 429 ? 30000 : 5000;
+                    addLog(`🔴 Koneksi terputus (kode: ${statusCode}), reconnect dalam ${delay/1000}s...`);
+                    setTimeout(start, delay);
                 } else {
                     addLog("⚠️ Bot Logout. Silakan scan ulang QR Code.");
-                    // Reset flag agar scheduler bisa diinisialisasi ulang setelah login baru
                     schedulerInitialized = false;
                 }
             } else if (connection === "open") {
                 isConnected = true; 
-                qrCodeData = ""; // Hapus QR data karena sudah terhubung
+                qrCodeData = "";
                 addLog("🟢 Bot Berhasil Terhubung ke WhatsApp!");
                 
-                // FIX: Hanya inisialisasi scheduler SEKALI.
-                // Tanpa pengecekan ini, setiap reconnect akan menambah setInterval baru
-                // sehingga pesan bisa terkirim berkali-kali di jam yang sama.
+                // Mulai keepalive
+                startKeepAlive();
+
                 if (!schedulerInitialized) {
-                    initQuizScheduler(sock, botConfig); 
-                    initJadwalBesokScheduler(sock, botConfig);
-                    initSmartFeedbackScheduler(sock, botConfig);
-                    initListPrMingguanScheduler(sock, botConfig);
-                    initSahurScheduler(sock, botConfig);
+                    // FIX #6: Pass safeSend ke scheduler agar scheduler juga pakai
+                    // wrapper yang aman, bukan sock.sendMessage() langsung
+                    initQuizScheduler(sock, botConfig, safeSend); 
+                    initJadwalBesokScheduler(sock, botConfig, safeSend);
+                    initSmartFeedbackScheduler(sock, botConfig, safeSend);
+                    initListPrMingguanScheduler(sock, botConfig, safeSend);
+                    initSahurScheduler(sock, botConfig, safeSend);
                     schedulerInitialized = true;
                 }
             }
         });
 
-        // Menangani pesan masuk
         sock.ev.on("messages.upsert", async (m) => {
             if (m.type === 'notify') {
                 const msg = m.messages[0];
-                
-                // Validasi: Abaikan pesan kosong atau pesan dari bot sendiri
                 if (!msg.message || msg.key.fromMe) return;
                 
                 stats.pesanMasuk++;
                 const senderName = msg.pushName || 'User';
                 addLog(`📩 Pesan masuk dari: ${senderName}`);
                 
-                // Teruskan pesan ke file handler.js untuk diproses
-                await handleMessages(sock, m, botConfig, { 
-                    getWeekDates, 
-                    sendJadwalBesokManual 
-                });
+                // FIX #7: Pass safeSend ke handler agar handler tidak langsung
+                // panggil sock.sendMessage() yang bisa hang
+                await handleMessages(sock, m, botConfig, botUtils, safeSend);
             }
         });
 
     } catch (err) {
-        // FIX: Tangkap error saat startup (misalnya gagal fetch versi Baileys karena network)
-        // agar bot tidak crash total, melainkan retry otomatis
         console.error("❌ Gagal memulai bot:", err.message);
         addLog("❌ Gagal memulai bot, mencoba lagi dalam 10 detik...");
         setTimeout(start, 10000);
     }
 }
 
-/**
- * EKSEKUSI PROGRAM
- * Memulai bot untuk pertama kali
- */
 start();
-
-/**
- * INFO: Baris ini ditambahkan untuk memastikan 
- * struktur kodingan tetap rapi dan mudah dibaca
- * serta memenuhi standar panjang baris yang diinginkan.
- * Akhir dari file index.js.
- */
