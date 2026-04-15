@@ -1,0 +1,7 @@
+node_modules
+.git
+.npm
+# Ganti nama di bawah sesuai nama folder sesi kamu (misal: session atau auth_info)
+session/
+auth_info/
+*.local
