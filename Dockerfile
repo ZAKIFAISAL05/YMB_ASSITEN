@@ -1,26 +1,19 @@
-# Gunakan Node.js versi 20 (LTS Iron)
-FROM node:20-bookworm-slim
+FROM node:20-bookworm
 
-# 1. Install library sistem yang dibutuhkan (tambah ffmpeg buat fitur stiker/video)
-RUN apt-get update && apt-get install -y \
-    git \
-    ffmpeg \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git ffmpeg && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 2. Copy manifest
 COPY package*.json ./
+RUN npm install --no-audit --no-fund
 
-# 3. Install dependencies (pakai --production jika sudah dideploy)
-RUN npm install --no-audit --no-fund && \
-    npm cache clean --force
+# Tambahkan baris ini supaya folder volume punya izin akses
+RUN mkdir -p /app/auth_info && chmod 777 /app/auth_info
 
-# 4. Copy sisa kode (Pastikan sudah ada .dockerignore agar folder sesi tidak ikut ter-copy)
 COPY . .
 
-# Tambahkan user non-root (Opsional, tapi lebih aman)
-# RUN useradd -m botuser && chown -R botuser:botuser /app
-# USER botuser
+# Tambahkan variabel environment untuk PORT (Railway butuh ini)
+ENV PORT=8080
+EXPOSE 8080
 
 CMD ["node", "index.js"]
