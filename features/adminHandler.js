@@ -185,37 +185,30 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             break;
         }
 
-         case '!info': {
+          case '!info':
             const infoMsgText = body.slice(6).trim();
-            const isImageInfo = msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
-            const isDocInfo = msg.message?.documentMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.documentMessage;
+            const isImageInfo = msg.message.imageMessage;
+            const isDocInfo = msg.message.documentMessage;
 
-            try {
-                if (isImageInfo || isDocInfo) {
-                    const bufferInfo = await downloadMediaMessage(msg, 'buffer', {});
-                    const type = isImageInfo ? 'image' : 'document';
-                    const options = { caption: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` };
-
-                    if (isDocInfo) {
-                        options.fileName = isDocInfo.fileName || "document";
-                        options.mimetype = isDocInfo.mimetype || "application/pdf";
-                    }
-
-                    await sock.sendMessage(ID_GRUP_TUJUAN, { [type]: bufferInfo, ...options });
-                    await sock.sendMessage(sender, { text: "✅ *Info media berhasil diteruskan ke grup!*" });
-                } else if (infoMsgText) {
-                    // Pastikan memanggil fungsi pengiriman teks
-                    await sendToGroupSafe({ text: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` });
-                    await sock.sendMessage(sender, { text: "✅ *Info teks berhasil dikirim!*" });
-                } else {
-                    await sock.sendMessage(sender, { text: "⚠️ *Pesan info kosong!* Ketik: !info [pesan]" });
+            if (isImageInfo || isDocInfo) {
+                const bufferInfo = await downloadMediaMessage(msg, 'buffer', {});
+                const type = isImageInfo ? 'image' : 'document';
+                const options = { caption: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` };
+                
+                if (isDocInfo) {
+                    options.fileName = isDocInfo.fileName;
+                    options.mimetype = isDocInfo.mimetype;
                 }
-            } catch (err) {
-                await sock.sendMessage(sender, { text: "❌ *Gagal mengirim info:* " + err.message });
+
+                await sock.sendMessage(ID_GRUP_TUJUAN, { [type]: bufferInfo, ...options });
+                await sock.sendMessage(sender, { text: "✅ *Info media berhasil diteruskan ke grup!*" });
+            } else if (infoMsgText) {
+                await sendToGroupSafe({ text: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` });
+                await sock.sendMessage(sender, { text: "✅ *Info teks berhasil dikirim!*" });
+            } else {
+                await sock.sendMessage(sender, { text: "⚠️ *Pesan info kosong!* Ketik: !info [pesan]" });
             }
             break;
-        }
-
 
         case '!hapus': {
             const targetHapus = bodyParts[1]?.toLowerCase();
