@@ -89,16 +89,11 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
     };
 
     const sendToGroupSafe = async (content) => {
-        try {
-            await sock.sendPresenceUpdate('composing', ID_GRUP_TUJUAN);
-            // Gunakan Promise timeout manual agar lebih stabil daripada delay bawaan
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            await sock.sendMessage(ID_GRUP_TUJUAN, content);
-        } catch (err) {
-            console.error("Gagal kirim ke grup:", err.message);
-            // Tetap coba kirim tanpa status mengetik jika gagal
-            await sock.sendMessage(ID_GRUP_TUJUAN, content);
-        }
+        // Presence update dijalankan tanpa await agar tidak memblokir atau melempar error
+        sock.sendPresenceUpdate('composing', ID_GRUP_TUJUAN).catch(() => {});
+        // Delay singkat agar presence sempat ter-broadcast sebelum pesan dikirim
+        await new Promise(resolve => setTimeout(resolve, 800));
+        await sock.sendMessage(ID_GRUP_TUJUAN, content);
     };
 
     const bodyParts = body.trim().split(/\s+/);
@@ -309,4 +304,3 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
 }
 
 module.exports = { handleAdminCommands };
-                                                                
