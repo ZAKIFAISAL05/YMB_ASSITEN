@@ -1,21 +1,26 @@
 # Gunakan Node.js versi 20 (LTS Iron)
-FROM node:20-bookworm
+FROM node:20-bookworm-slim
 
-# 1. Command Cepat: Install GIT & Bersihkan Cache APT dalam satu langkah
-RUN apt-get update && apt-get install -y git && apt-get clean && rm -rf /var/lib/apt/lists/*
+# 1. Install library sistem yang dibutuhkan (tambah ffmpeg buat fitur stiker/video)
+RUN apt-get update && apt-get install -y \
+    git \
+    ffmpeg \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# 2. Copy Manifest (Hanya package.json)
+# 2. Copy manifest
 COPY package*.json ./
 
-# 3. Update: Install Axios & Form-Data (Hapus Google AI karena sudah tidak pakai Key)
+# 3. Install dependencies (pakai --production jika sudah dideploy)
 RUN npm install --no-audit --no-fund && \
-    npm install axios form-data --no-audit --no-fund && \
     npm cache clean --force
 
-# 4. Copy sisa kode
+# 4. Copy sisa kode (Pastikan sudah ada .dockerignore agar folder sesi tidak ikut ter-copy)
 COPY . .
 
-# Command jalankan aplikasi
+# Tambahkan user non-root (Opsional, tapi lebih aman)
+# RUN useradd -m botuser && chown -R botuser:botuser /app
+# USER botuser
+
 CMD ["node", "index.js"]
