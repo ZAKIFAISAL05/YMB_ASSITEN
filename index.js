@@ -1,11 +1,9 @@
 /**
  * SYTEAM-BOT MAIN SERVER
- * Versi: 1.3.0
- * Perbaikan: Fix bot typing tapi pesan tidak terkirim ke grup
- * - Tambah sendMessage wrapper dengan timeout & retry
- * - Tambah presenceUpdate clearing agar typing tidak stuck
- * - Tambah rate limit delay antar pesan scheduler
- * - Tambah keepAlive ping agar koneksi tidak drop diam-diam
+ * Versi: 1.3.1
+ * Perbaikan: Fix SessionError & Docker Persistency
+ * - Menggunakan auth state langsung untuk stabilitas keys
+ * - Optimasi handling connection closure
  */
 
 const { 
@@ -90,15 +88,10 @@ let schedulerInitialized = false;
 
 // ─────────────────────────────────────────────────────────────
 // FIX #1: SAFE SEND MESSAGE WRAPPER
-// Masalah utama: sock.sendMessage() ke grup kadang hang selamanya
-// tanpa resolve/reject → bot stuck typing, internet terasa "putus".
-// Solusi: bungkus dengan Promise.race() + timeout 20 detik.
-// Jika gagal, tunggu 3 detik lalu coba 1x lagi (retry).
 // ─────────────────────────────────────────────────────────────
 const safeSend = async (jid, content, options = {}, retries = 2) => {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
-            // Timeout 20 detik — jika WhatsApp tidak merespons, lempar error
             const result = await Promise.race([
                 sock.sendMessage(jid, content, options),
                 new Promise((_, reject) =>
@@ -106,8 +99,6 @@ const safeSend = async (jid, content, options = {}, retries = 2) => {
                 )
             ]);
 
-            // FIX #2: Setelah sukses kirim, pastikan status "typing" dibersihkan
-            // agar bot tidak terlihat mengetik terus di grup
             try {
                 await sock.sendPresenceUpdate('paused', jid);
             } catch (_) { /* abaikan error presence */ }
@@ -117,7 +108,6 @@ const safeSend = async (jid, content, options = {}, retries = 2) => {
         } catch (err) {
             addLog(`⚠️ Gagal kirim pesan (percobaan ${attempt}/${retries}): ${err.message}`);
             if (attempt < retries) {
-                // Tunggu 3 detik sebelum retry agar tidak flood
                 await new Promise(r => setTimeout(r, 3000));
             }
         }
@@ -126,10 +116,6 @@ const safeSend = async (jid, content, options = {}, retries = 2) => {
     return null;
 };
 
-// Export safeSend agar bisa dipakai di handler.js dan scheduler.js
-// Cara pakai di file lain: const { safeSend } = require('./index');
-// TAPI karena circular import bisa bermasalah, lebih baik inject via parameter.
-// Kita simpan di global object yang di-pass ke handler & scheduler.
 const botUtils = {
     safeSend,
     getWeekDates,
@@ -138,8 +124,6 @@ const botUtils = {
 
 // ─────────────────────────────────────────────────────────────
 // FIX #3: KEEPALIVE PING
-// Koneksi WhatsApp bisa diam-diam drop tanpa trigger "close" event.
-// Ping setiap 30 detik untuk mendeteksi koneksi zombie lebih cepat.
 // ─────────────────────────────────────────────────────────────
 let keepAliveInterval = null;
 
@@ -148,18 +132,16 @@ const startKeepAlive = () => {
     keepAliveInterval = setInterval(async () => {
         if (!isConnected || !sock) return;
         try {
-            // Query versi WA sebagai "ping" ringan
             await sock.query({
                 tag: 'iq',
                 attrs: { type: 'get', to: '@s.whatsapp.net', xmlns: 'w:p' }
             });
         } catch (e) {
-            // Jika ping gagal, koneksi sudah zombie — reconnect
             addLog("🔄 Koneksi zombie terdeteksi, reconnect...");
             isConnected = false;
             try { sock.end(); } catch (_) {}
         }
-    }, 30000); // setiap 30 detik
+    }, 30000);
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -219,25 +201,24 @@ async function start() {
 
         sock = makeWASocket({
             version,
-            auth: { 
-                creds: state.creds, 
-                keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
-            },
+            // FIX: Menggunakan 'state' langsung agar keys sinkron dengan disk
+            auth: state,
             printQRInTerminal: false,
             logger: pino({ level: "silent" }),
             browser: ["Ubuntu", "Firefox", "20.0.0"],
             syncFullHistory: false,
-
-            // FIX #4: Opsi koneksi tambahan agar tidak mudah timeout di grup
-            connectTimeoutMs: 60000,      // tunggu 60 detik saat connect
-            defaultQueryTimeoutMs: 30000, // timeout per query 30 detik
-            keepAliveIntervalMs: 15000,   // built-in keepalive Baileys 15 detik
-            retryRequestDelayMs: 2000,    // delay antar retry request
-            maxMsgRetryCount: 5,          // maksimal retry per pesan
-            getMessage: async () => undefined // hindari error saat decrypt pesan lama
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 30000,
+            keepAliveIntervalMs: 15000,
+            retryRequestDelayMs: 2000,
+            maxMsgRetryCount: 5,
+            getMessage: async () => undefined 
         });
 
         sock.ev.on("creds.update", saveCreds);
+
+        // Tambahkan listener messages.update untuk stabilitas enkripsi
+        sock.ev.on('messages.update', () => {});
 
         sock.ev.on("connection.update", async (update) => {
             const { connection, lastDisconnect, qr } = update;
@@ -252,7 +233,6 @@ async function start() {
                 const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
                 if (shouldReconnect) {
-                    // FIX #5: Delay reconnect lebih lama jika kena rate limit (statusCode 429)
                     const delay = statusCode === 429 ? 30000 : 5000;
                     addLog(`🔴 Koneksi terputus (kode: ${statusCode}), reconnect dalam ${delay/1000}s...`);
                     setTimeout(start, delay);
@@ -265,12 +245,9 @@ async function start() {
                 qrCodeData = "";
                 addLog("🟢 Bot Berhasil Terhubung ke WhatsApp!");
                 
-                // Mulai keepalive
                 startKeepAlive();
 
                 if (!schedulerInitialized) {
-                    // FIX #6: Pass safeSend ke scheduler agar scheduler juga pakai
-                    // wrapper yang aman, bukan sock.sendMessage() langsung
                     initQuizScheduler(sock, botConfig, safeSend); 
                     initJadwalBesokScheduler(sock, botConfig, safeSend);
                     initSmartFeedbackScheduler(sock, botConfig, safeSend);
@@ -290,8 +267,6 @@ async function start() {
                 const senderName = msg.pushName || 'User';
                 addLog(`📩 Pesan masuk dari: ${senderName}`);
                 
-                // FIX #7: Pass safeSend ke handler agar handler tidak langsung
-                // panggil sock.sendMessage() yang bisa hang
                 await handleMessages(sock, m, botConfig, botUtils, safeSend);
             }
         });
