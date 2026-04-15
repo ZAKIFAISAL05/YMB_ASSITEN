@@ -89,17 +89,19 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
     };
 
     const sendToGroupSafe = async (content) => {
-        await sock.sendPresenceUpdate('composing', ID_GRUP_TUJUAN);
-        await delay(2000);
-        await sock.sendMessage(ID_GRUP_TUJUAN, content);
+        try {
+            await sock.sendPresenceUpdate('composing', ID_GRUP_TUJUAN);
+            // Gunakan Promise timeout manual agar lebih stabil daripada delay bawaan
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            await sock.sendMessage(ID_GRUP_TUJUAN, content);
+        } catch (err) {
+            console.error("Gagal kirim ke grup:", err.message);
+            // Tetap coba kirim tanpa status mengetik jika gagal
+            await sock.sendMessage(ID_GRUP_TUJUAN, content);
+        }
     };
 
-    // ✅ FIX UTAMA: Parse args langsung dari body agar tidak bergantung pada cara split di handler luar
-    // body contoh: "!hapus deadline semua" atau "!hapus senin ipa"
     const bodyParts = body.trim().split(/\s+/);
-    // bodyParts[0] = "!hapus" / "!update" dll
-    // bodyParts[1] = argumen pertama
-    // bodyParts[2+] = argumen selanjutnya
 
     switch (cmd) {
 
@@ -161,7 +163,6 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
             }
 
             const daysUpdate = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
-            // Cari hari dari bodyParts[1] sampai [3]
             const firstPart = bodyParts.slice(1, 4).join(' ').toLowerCase();
             let dIdx = daysUpdate.findIndex(d => firstPart.includes(d));
 
@@ -191,81 +192,70 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
 
         case '!info': {
             const infoMsgText = body.slice(6).trim();
-            const isImageInfo = msg.message?.imageMessage;
-            const isDocInfo = msg.message?.documentMessage;
+            const isImageInfo = msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage;
+            const isDocInfo = msg.message?.documentMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.documentMessage;
 
-            if (isImageInfo || isDocInfo) {
-                const bufferInfo = await downloadMediaMessage(msg, 'buffer', {});
-                const type = isImageInfo ? 'image' : 'document';
-                const options = { caption: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` };
+            try {
+                if (isImageInfo || isDocInfo) {
+                    const bufferInfo = await downloadMediaMessage(msg, 'buffer', {});
+                    const type = isImageInfo ? 'image' : 'document';
+                    const options = { caption: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` };
 
-                if (isDocInfo) {
-                    options.fileName = isDocInfo.fileName;
-                    options.mimetype = isDocInfo.mimetype;
+                    if (isDocInfo) {
+                        options.fileName = isDocInfo.fileName || "document";
+                        options.mimetype = isDocInfo.mimetype || "application/pdf";
+                    }
+
+                    await sock.sendMessage(ID_GRUP_TUJUAN, { [type]: bufferInfo, ...options });
+                    await sock.sendMessage(sender, { text: "✅ *Info media berhasil diteruskan ke grup!*" });
+                } else if (infoMsgText) {
+                    // Pastikan memanggil fungsi pengiriman teks
+                    await sendToGroupSafe({ text: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` });
+                    await sock.sendMessage(sender, { text: "✅ *Info teks berhasil dikirim!*" });
+                } else {
+                    await sock.sendMessage(sender, { text: "⚠️ *Pesan info kosong!* Ketik: !info [pesan]" });
                 }
-
-                await sock.sendMessage(ID_GRUP_TUJUAN, { [type]: bufferInfo, ...options });
-                await sock.sendMessage(sender, { text: "✅ *Info media berhasil diteruskan ke grup!*" });
-            } else if (infoMsgText) {
-                await sendToGroupSafe({ text: `📢 *PENGUMUMAN*\n${SEP}\n\n${infoMsgText}\n\n${SEP}\n_— Pengurus_` });
-                await sock.sendMessage(sender, { text: "✅ *Info teks berhasil dikirim!*" });
-            } else {
-                await sock.sendMessage(sender, { text: "⚠️ *Pesan info kosong!* Ketik: !info [pesan]" });
+            } catch (err) {
+                await sock.sendMessage(sender, { text: "❌ *Gagal mengirim info:* " + err.message });
             }
             break;
         }
 
         case '!hapus': {
-            // ✅ FIX: Parse langsung dari bodyParts, bukan dari args
-            // body: "!hapus deadline semua" → bodyParts: ["!hapus", "deadline", "semua"]
-            // body: "!hapus senin ipa"     → bodyParts: ["!hapus", "senin", "ipa"]
             const targetHapus = bodyParts[1]?.toLowerCase();
             const targetMapel = bodyParts.slice(2).join(' ').toLowerCase().trim();
 
-            // Validasi: tidak ada argumen sama sekali
             if (!targetHapus) {
-                return await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari/deadline] [mapel/semua]*\n\nContoh:\n• !hapus senin semua\n• !hapus senin ipa\n• !hapus deadline semua\n• !hapus deadline matematika" });
+                return await sock.sendMessage(sender, { text: "⚠️ *Format: !hapus [hari/deadline] [mapel/semua]*" });
             }
 
-            // 1. LOGIKA HAPUS DEADLINE
             if (targetHapus === 'deadline') {
                 try {
                     if (targetMapel === 'semua' || targetMapel === '') {
                         db.updateTugas('deadline', "[]");
-                        return await sock.sendMessage(sender, { text: "✅ *DATABASE CLEANED*\nSemua daftar deadline telah dihapus!" });
+                        return await sock.sendMessage(sender, { text: "✅ *DATABASE CLEANED*" });
                     }
 
                     let raw = db.getAll().deadline;
                     let list = JSON.parse(raw || "[]");
-                    const sebelum = list.length;
                     let filtered = list.filter(item => !item.task.toLowerCase().includes(targetMapel));
-
-                    if (filtered.length === sebelum) {
-                        return await sock.sendMessage(sender, { text: `⚠️ Deadline dengan kata *"${targetMapel}"* tidak ditemukan.` });
-                    }
-
                     db.updateTugas('deadline', JSON.stringify(filtered, null, 2));
-                    return await sock.sendMessage(sender, { text: `✅ Deadline *${targetMapel}* telah dihapus!` });
+                    return await sock.sendMessage(sender, { text: `✅ Deadline *${targetMapel}* dihapus!` });
                 } catch (e) {
                     db.updateTugas('deadline', "[]");
-                    return await sock.sendMessage(sender, { text: "✅ Data deadline dibersihkan (error reset)!" });
+                    return await sock.sendMessage(sender, { text: "✅ Reset deadline!" });
                 }
             }
 
-            // 2. LOGIKA HAPUS HARI PELAJARAN (Senin-Jumat)
             const hariValid = ['senin', 'selasa', 'rabu', 'kamis', 'jumat'];
             if (hariValid.includes(targetHapus)) {
                 if (targetMapel === 'semua' || targetMapel === '') {
                     db.updateTugas(targetHapus, "");
-                    return await sock.sendMessage(sender, { text: `✅ *DATABASE CLEANED*\nSemua data hari *${targetHapus.toUpperCase()}* dihapus!` });
+                    return await sock.sendMessage(sender, { text: `✅ *DATABASE CLEANED* ${targetHapus.toUpperCase()}!` });
                 }
 
                 const findM = STRUKTUR_JADWAL[targetHapus]?.find(m => new RegExp(`\\b${targetMapel}\\b`, 'i').test(m));
-                if (!findM) {
-                    return await sock.sendMessage(sender, {
-                        text: `❌ *MAPEL TIDAK DITEMUKAN*\nMapel hari ${targetHapus.toUpperCase()}:\n> ${(STRUKTUR_JADWAL[targetHapus] || []).join(', ')}`
-                    });
-                }
+                if (!findM) return await sock.sendMessage(sender, { text: `❌ Mapel tidak ditemukan.` });
 
                 const emojiMapel = MAPEL_CONFIG[findM];
                 let currentData = db.getAll()[targetHapus] || "";
@@ -273,13 +263,9 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                 let filteredEntries = entries.filter(e => !e.includes(emojiMapel));
 
                 db.updateTugas(targetHapus, filteredEntries.join('\n\n').trim());
-                return await sock.sendMessage(sender, { text: `✅ Berhasil menghapus tugas *${findM}* dari hari *${targetHapus.toUpperCase()}*!` });
+                return await sock.sendMessage(sender, { text: `✅ Berhasil menghapus *${findM}*!` });
             }
-
-            // Argumen tidak valid (bukan hari dan bukan 'deadline')
-            return await sock.sendMessage(sender, {
-                text: `⚠️ *"${targetHapus}" tidak dikenali.*\n\nFormat: !hapus [hari/deadline] [mapel/semua]\nHari valid: senin, selasa, rabu, kamis, jumat`
-            });
+            break;
         }
 
         case '!update_deadline': {
@@ -292,13 +278,9 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
                     let data = db.getAll().deadline || "[]";
                     let list = [];
                     try { list = JSON.parse(data); } catch { list = []; }
-
                     list.push({ task, deadline: dateStr });
                     db.updateTugas('deadline', JSON.stringify(list, null, 2));
-
-                    await sock.sendMessage(sender, {
-                        text: `✅ *Deadline ditambahkan!*\n\n📌 ${task}\n📅 ${dateStr}`
-                    });
+                    await sock.sendMessage(sender, { text: `✅ *Deadline ditambahkan!*` });
                     break;
                 }
             }
@@ -327,3 +309,4 @@ async function handleAdminCommands(sock, msg, cmd, args, utils, body, nonAdminMs
 }
 
 module.exports = { handleAdminCommands };
+                                                                
