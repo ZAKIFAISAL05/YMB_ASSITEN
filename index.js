@@ -180,9 +180,6 @@ async function start() {
             initListPrMingguanScheduler(sock, botConfig);
             initSahurScheduler(sock, botConfig);
             
-            if (typeof initTkaScheduler === 'function') {
-                initTkaScheduler(sock, botConfig);
-            }
         }
     });
 
