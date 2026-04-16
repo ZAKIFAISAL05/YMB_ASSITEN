@@ -134,20 +134,41 @@ async function start() {
     const { state, saveCreds } = await useMultiFileAuthState(VOLUME_PATH);
 
     sock = makeWASocket({
-        version,
-        auth: { 
-            creds: state.creds, 
-            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
-        },
-        printQRInTerminal: true, // Diaktifkan di terminal untuk backup jika dashboard delay
-        logger: pino({ level: "silent" }),
-        // Update: Browser Identity lebih umum agar tidak dicurigai sistem WA
-        browser: ["Mac OS", "Chrome", "121.0.6167.85"],
-        syncFullHistory: false,
-        connectTimeoutMs: 60000, // Tambah waktu tunggu koneksi
-        defaultQueryTimeoutMs: 0,
-        keepAliveIntervalMs: 10000
-    });
+    version,
+    auth: { 
+        creds: state.creds, 
+        keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) 
+    },
+    printQRInTerminal: true,
+    logger: pino({ level: "silent" }),
+    browser: ["Mac OS", "Chrome", "121.0.6167.85"],
+    syncFullHistory: false,
+    // TAMBAHKAN INI UNTUK MEMINIMALISIR SESSION ERROR
+    patchMessageBeforeSending: (message) => {
+        const requiresPatch = !!(
+            message.buttonsMessage ||
+            message.templateMessage ||
+            message.listMessage
+        );
+        if (requiresPatch) {
+            return {
+                viewOnceMessage: {
+                    message: {
+                        messageContextInfo: {
+                            deviceListMetadata: {},
+                            deviceListMetadataVersion: 2,
+                        },
+                        ...message,
+                    },
+                },
+            };
+        }
+        return message;
+    },
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 0,
+    keepAliveIntervalMs: 10000
+});
 
     sock.ev.on("creds.update", saveCreds);
 
