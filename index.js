@@ -28,10 +28,7 @@ const {
     initSahurScheduler,
     getWeekDates, 
     sendJadwalBesokManual 
-} = require('./scheduler'); 
-
-// --- IMPORT TKA REMINDER ---
-const { initTkaScheduler } = require('./tkaReminder'); 
+} = require('./scheduler');  
 
 // --- IMPORT UI VIEWS ---
 const { renderDashboard } = require('./views/dashboard'); 
@@ -67,7 +64,6 @@ let botConfig = {
     smartFeedback: true, 
     prMingguan: true, 
     sahur: true,
-    tkaReminder: true 
 };
 
 /**
